@@ -12,27 +12,10 @@
 
 using namespace Eigen;
 
-#define CMD_LENGTH_SHORT 5
-#define CMD_LENGTH_LONG 13
-#define PROBE_LENGTH 13
-#define ORIGIN_LENGTH 41
-#define POLL_LENGTH 33
-#define CALIBRATION_POINTS 17
 
 TeensyTimerTool::OneShotTimer timer1;
 
-////Serial bitbanging settings
-const int _fastBaud = 1250000;
-//const int _slowBaud = 1000000;
-const int _slowBaud = 1000000;
-const int _fastDivider = (((F_CPU * 2) + ((_fastBaud) >> 1)) / (_fastBaud));
-const int _slowDivider = (((F_CPU * 2) + ((_slowBaud) >> 1)) / (_slowBaud));
-const int _fastBDH = (_fastDivider >> 13) & 0x1F;
-const int _slowBDH = (_slowDivider >> 13) & 0x1F;
-const int _fastBDL = (_fastDivider >> 5) & 0xFF;
-const int _slowBDL = (_slowDivider >> 5) & 0xFF;
-const int _fastC4 = _fastDivider & 0x1F;
-const int _slowC4 = _slowDivider & 0x1F;
+
 
 /////defining which pin is what on the teensy
 const int _pinLa = 16;
@@ -45,8 +28,8 @@ const int _pinAy = 14;
 //const int _pinCy = 22;
 const int _pinCx = 22;
 const int _pinCy = 21;
-const int _pinRX = 9;
-const int _pinTX = 10;
+const int _pinRX = 7;
+const int _pinTX = 8;
 const int _pinDr = 6;
 const int _pinDu = 18;
 const int _pinDl = 17;
@@ -88,10 +71,6 @@ float _podeThreshY = 0.5;
 float _velFilterX = 0;
 float _velFilterY = 0;
 
-//////values used to determine how much large of a region will count as being "in a notch"
-
-const float _marginAngle = 1.50/100.0; //angle range(+/-) in radians that will be collapsed down to the ideal angle
-const float _tightAngle = 0.1/100.0;//angle range(+/-) in radians that the margin region will be collapsed down to, found that having a small value worked better for the transform than 0
 
 //////values used for calibration
 const int _noOfNotches = 16;
@@ -203,10 +182,6 @@ float _aStickLastY;
 float _cStickX;
 float _cStickY;
 
-volatile int _writeQueue = 0;
-
-
-
 unsigned int _lastMicros;
 float _dT;
 bool _running = false;
@@ -216,52 +191,64 @@ VectorXf _yState(2);
 MatrixXf _xP(2,2);
 MatrixXf _yP(2,2);
 
+////Serial settings
+bool _writing = false;
+bool _waiting = false;
+int _bitQueue = 0;
+int _waitQueue = 0;
+int _writeQueue = 0;
+uint8_t _cmdByte = 0;
+const int _fastBaud = 2500000;
+const int _slowBaud = 2000000;
+const int _probeLength = 25;
+const int _originLength = 81;
+const int _pollLength = 65;
+static char _serialBuffer[128];
 
-const char probeResponse[PROBE_LENGTH] = {
-	0x08,0x08,0x0F,0xE8,
-	0x08,0x08,0x08,0x08,
-	0x08,0x08,0x08,0xEF,
-	0xFF};
-volatile char pollResponse[POLL_LENGTH] = {
-0x08,0x08,0x08,0x08,
-0x0F,0x08,0x08,0x08,
-0xE8,0xEF,0xEF,0xEF,
-0xE8,0xEF,0xEF,0xEF,
-0xE8,0xEF,0xEF,0xEF,
-0xE8,0xEF,0xEF,0xEF,
-0x08,0xEF,0xEF,0x08,
-0x08,0xEF,0xEF,0x08,
-0xFF};
-const char originResponse[ORIGIN_LENGTH] = {
-	0x08,0x08,0x08,0x08,
-	0x0F,0x08,0x08,0x08,
-	0xE8,0xEF,0xEF,0xEF,
-	0xE8,0xEF,0xEF,0xEF,
-	0xE8,0xEF,0xEF,0xEF,
-	0xE8,0xEF,0xEF,0xEF,
-	0x08,0xEF,0xEF,0x08,
-	0x08,0xEF,0xEF,0x08,
-	0x08,0x08,0x08,0x08,
-	0x08,0x08,0x08,0x08,
-	0xFF};
+const char _probeResponse[_probeLength] = {
+	0,0,0,0, 1,0,0,1,
+	0,0,0,0, 0,0,0,0,
+	0,0,0,0, 0,0,1,1,
+	1};
+const char _originResponse[_originLength] = {
+0,0,0,0,0,0,0,0,
+0,0,0,0,0,0,0,0,
+0,1,1,1,1,1,1,1,
+0,1,1,1,1,1,1,1,
+0,1,1,1,1,1,1,1,
+0,1,1,1,1,1,1,1,
+0,0,0,0,0,0,0,0,
+0,0,0,0,0,0,0,0,
+0,0,0,0,0,0,0,0,
+0,0,0,0,0,0,0,0,
+1};
+volatile char _pollResponse[_originLength] = {
+0,0,0,0,0,0,0,0,
+0,0,0,0,0,0,0,0,
+0,1,1,1,1,1,1,1,
+0,1,1,1,1,1,1,1,
+0,1,1,1,1,1,1,1,
+0,1,1,1,1,1,1,1,
+0,0,0,0,0,0,0,0,
+0,0,0,0,0,0,0,0,
+1};
 
-int cmd[CMD_LENGTH_LONG];
-int cmdByte;
-volatile char _bitCount = 0;
+
+/* volatile char _bitCount = 0;
 volatile bool _probe = false;
 volatile bool _pole = false;
 volatile int _commStatus = 0;
 static int _commIdle = 0;
 static int _commRead = 1;
 static int _commPoll = 2;
-static int _commWrite = 3;
+static int _commWrite = 3; */
 
 void setup() {
 	
 	//start USB serial
-	Serial.begin(57600);
-	Serial.println("Software version b1.1s0.1 (hopefully Phobos remembered to update this message)");
-	//Serial.println("This is not a stable version");
+	Serial.begin(115200);
+	//Serial.println("Software version b1.1s0.1 (hopefully Phobos remembered to update this message)");
+	Serial.println("This is not a stable version");
 	delay(1000);
 
 	readEEPROM();
@@ -283,7 +270,7 @@ void setup() {
 	
 	//analogReference(1);
 	
-	adc->adc0->setReference(ADC_REFERENCE::REF_EXT);
+	//adc->adc0->setReference(ADC_REFERENCE::REF_EXT);
 	adc->adc0->setAveraging(8); // set number of averages
   adc->adc0->setResolution(12); // set bits of resolution
   adc->adc0->setConversionSpeed(ADC_CONVERSION_SPEED::MED_SPEED ); // change the conversion speed
@@ -295,6 +282,7 @@ void setup() {
   adc->adc1->setSamplingSpeed(ADC_SAMPLING_SPEED::VERY_LOW_SPEED ); // change the sampling speed
    */
 	setPinModes();
+	attachInterrupt(9,commInt,RISING);
 	
 	
 /* 
@@ -325,25 +313,28 @@ void setup() {
 	//Serial.print("starting hw serial at freq:");
 	//Serial.println(_slowBaud);
 	//start hardware serial
+	Serial2.addMemoryForRead(_serialBuffer,128);
 	Serial2.begin(_slowBaud);
 	//UART1_C2 &= ~UART_C2_RE;
 	//attach the interrupt which will call the communicate function when the data line transitions from high to low
 
-	timer1.begin(communicate);
+	//timer1.begin(communicate);
 	//timer2.begin(checkCmd);
 	//timer3.begin(writePole);
-	digitalWriteFast(12,HIGH);
+	//digitalWriteFast(12,HIGH);
 	//ARM_DEMCR |= ARM_DEMCR_TRCENA;
 	//ARM_DWT_CTRL |= ARM_DWT_CTRL_CYCCNTENA;
-	attachInterrupt(_pinRX, bitCounter, FALLING);
-	NVIC_SET_PRIORITY(IRQ_PORTC, 0);
+	//attachInterrupt(_pinRX, bitCounter, FALLING);
+	//NVIC_SET_PRIORITY(IRQ_GPIO6789, 0);
 }
 
 void loop() {
 	//read the controllers buttons
 	readButtons();
 	//read the analog inputs
+	digitalWriteFast(13,HIGH);
 	readSticks();
+	digitalWriteFast(13,LOW);
 	//check to see if we are calibrating
 	if(_currentCalStep >= 0){
 		if(_calAStick){
@@ -365,6 +356,175 @@ void loop() {
 	//}
 
 }
+void commInt() {
+	//digitalWriteFast(13,LOW);
+	Serial.print(_bitQueue);
+	Serial.print(',');
+	Serial.println(Serial2.available());
+	if(Serial2.available() >= _bitQueue){
+		if(_writing){
+			digitalWriteFast(13,LOW);
+			Serial2.flush();
+			Serial2.clear();
+			_writing = false;
+			Serial2.begin(2000000);
+			_bitQueue = 8;
+		}
+		else if(_waiting){
+			Serial2.clear();
+			_waiting = false;
+			Serial2.begin(2500000);
+			_writing = true;
+			_bitQueue = _pollLength-1;
+			for(int i = 0; i<_pollLength; i++){
+				if(_pollResponse[i]){
+					Serial2.write(0b11111100);
+				}
+				else{
+					Serial2.write(0b11000000);
+				}
+			}
+		}
+		else{
+			if(Serial2.available() >= _bitQueue){
+				digitalWriteFast(13,LOW);
+				_cmdByte = 0;
+				for(int i = 0; i<8; i++){
+					int bitval = Serial2.read();
+					_cmdByte = (_cmdByte<<1) | (bitval > 0b11110000);
+					Serial.print(bitval,BIN);
+					Serial.print(',');
+				}
+				Serial.println();
+				Serial.println(_cmdByte,HEX);
+				if(_cmdByte == 0b00000000){
+					
+					Serial2.read();
+					Serial2.begin(2500000);
+					_writing = true;
+					_bitQueue = _probeLength-1;
+					for(int i = 0; i<_probeLength; i++){
+						if(_probeResponse[i]){
+							Serial2.write(0b11111100);
+						}
+						else{
+							Serial2.write(0b11000000);
+						}
+					}
+				}
+				else if(_cmdByte == 0b01000001){
+					Serial2.read();
+					Serial2.begin(2500000);
+					_writing = true;
+					_bitQueue = _originLength-1;
+					for(int i = 0; i<_originLength; i++){
+						if(_originResponse[i]){
+							Serial2.write(0b11111100);
+						}
+						else{
+							Serial2.write(0b11000000);
+						}
+					}
+				}
+				else if(_cmdByte == 0b01000000){
+					_waiting = true;
+					_bitQueue = 16;
+				}
+				
+				//digitalWriteFast(13,LOW);
+			}
+		}
+	}
+	digitalWriteFast(13,HIGH);
+}
+void serialEvent2NOTUSED() {
+  if(_writing){
+		//digitalWriteFast(12,HIGH);
+		
+    while(Serial2.available()){
+			Serial2.read();
+			_writeQueue--;
+    }
+		
+		if(_writeQueue <=0){
+			_writing = false;
+			Serial2.begin(_slowBaud);
+		}
+		
+		//digitalWriteFast(12,LOW);
+  }
+	else if(_waiting){
+		while(Serial2.available()){
+			Serial2.read();
+			_waitQueue--;
+    }
+		if(_waitQueue<=0){
+			_waiting = false;
+			Serial2.begin(_fastBaud);
+			_writing = true;
+			_writeQueue = _pollLength;
+			for(int i = 0; i<_pollLength; i++){
+				//Serial.print(_pollResponse[i],BIN);
+				if(_pollResponse[i]){
+					Serial2.write(0b11111100);
+				}
+				else{
+					Serial2.write(0b11000000);
+				}
+			}
+			//Serial.println();
+		}
+	}
+  else{
+    if(Serial2.available()>8){
+      //digitalWriteFast(12,HIGH);
+			_cmdByte = 0;
+      for(int i = 0; i<8; i++){
+				int bitval = Serial2.read();
+				_cmdByte = (_cmdByte<<1) | (bitval > 0b11110000);
+        //Serial.print(bitval,BIN);
+				//Serial.print(',');
+      }
+			//Serial.println();
+			//Serial.println(_cmdByte,HEX);
+			if(_cmdByte == 0b00000000){
+				Serial2.read();
+				Serial2.begin(_fastBaud);
+				_writing = true;
+				_writeQueue = _probeLength;
+				for(int i = 0; i<_probeLength; i++){
+					if(_probeResponse[i]){
+						Serial2.write(0b11111100);
+					}
+					else{
+						Serial2.write(0b11000000);
+					}
+				}
+			}
+			else if(_cmdByte == 0b01000001){
+				Serial2.read();
+				Serial2.begin(_fastBaud);
+				_writing = true;
+				_writeQueue = _originLength;
+				for(int i = 0; i<_originLength; i++){
+					if(_originResponse[i]){
+						Serial2.write(0b11111100);
+					}
+					else{
+						Serial2.write(0b11000000);
+					}
+				}
+			}
+			else if(_cmdByte == 0b01000000){
+				_waiting = true;
+				_waitQueue = 17;
+			}
+      
+      //digitalWriteFast(12,LOW);
+    }
+  }
+}
+
 void readEEPROM(){
 	//get the jump setting
 	EEPROM.get(_eepromJump, _jumpConfig);
@@ -496,6 +656,11 @@ void setPinModes(){
 	pinMode(_pinB,INPUT_PULLUP);
 	pinMode(_pinZ,INPUT_PULLUP);
 	pinMode(_pinS,INPUT_PULLUP);
+	pinMode(9,INPUT_PULLUP);
+	pinMode(_pinS,INPUT_PULLUP);
+	pinMode(13,OUTPUT);
+	
+	//pinMode(12,OUTPUT);
 
 	
 	bounceDr.attach(_pinDr);
@@ -747,6 +912,11 @@ void readSticks(){
 	_cStickX = (_cStickX + adc->adc0->analogRead(_pinCx)/4096.0)*0.5;
 	_cStickY = (_cStickY + adc->adc0->analogRead(_pinCy)/4096.0)*0.5;
 	
+	Serial.print(_cStickX);
+	Serial.print(",");
+	Serial.println(_cStickY);
+
+	
 	//create the measurement vector to be used in the kalman filter
 	VectorXf xZ(1);
 	VectorXf yZ(1);
@@ -825,9 +995,9 @@ void readSticks(){
 	//Serial.print(",");
 	//Serial.print((posAy+127.5),8);
 	//Serial.print(",");
-	//Serial.print(btn.Ax);
-	//Serial.print(",");
-	//Serial.print(btn.Ay);
+	Serial.print(btn.Cx);
+	Serial.print(",");
+	Serial.println(btn.Cy);
 }
 /*******************
 	notchRemap
@@ -844,8 +1014,6 @@ void notchRemap(float xIn, float yIn, float* xOut, float* yOut, float affineCoef
 	
 	//go through the region boundaries from lowest angle to highest, checking if the current position vector is in that region
 	//if the region is not found then it must be between the first and the last boundary, ie the last region
-	//we check GATE_REGIONS*2 because each notch has its own very small region we use to make notch values more consistent
-	//int region = regions*2-1;
 	int region = regions-1;
 	for(int i = 1; i < regions; i++){
 		if(angle < regionAngles[i]){
@@ -873,46 +1041,37 @@ void notchRemap(float xIn, float yIn, float* xOut, float* yOut, float affineCoef
 void setPole(){
 	for(int i = 0; i < 8; i++){
 		//write all of the data in the button struct (taken from the dogebawx project, thanks to GoodDoge)
-		for(int j = 0; j < 4; j++){
-			//this could probably be done better but we need to take 2 bits at a time to put into one serial byte
-			//for details on this read here: http://www.qwertymodo.com/hardware-projects/n64/n64-controller
-			int these2bits = (btn.arr[i]>>(6-j*2)) & 3;
-			switch(these2bits){
-				case 0:
-				pollResponse[(i<<2)+j] = 0x08;
-				break;
-				case 1:
-				pollResponse[(i<<2)+j] = 0xE8;
-				break;
-				case 2:
-				pollResponse[(i<<2)+j] = 0x0F;
-				break;
-				case 3:
-				pollResponse[(i<<2)+j] = 0xEF;
-				break;
-			}
+		for(int j = 0; j < 8; j++){
+			_pollResponse[i*8+j] = btn.arr[i]>>(7-j) & 1;
 		}
-
 	}
 }
 /*******************
 	communicate
 	try to communicate with the gamecube/wii
 *******************/
+/* 
 void bitCounter(){
 	_bitCount ++;
 	//digitalWriteFast(12,!(_bitCount%2));
+	//Serial.println('b');
 	if(_bitCount == 1){
-		timer1.trigger((CMD_LENGTH_SHORT-1)*10);
+		timer1.trigger((CMD_LENGTH_SHORT-1)*20);
 		_commStatus = _commRead;
 	}
 }
 void communicate(){
 	//Serial.println(_commStatus,DEC);
-	if(_commStatus == _commRead){
-		//digitalWriteFast(12,LOW);
+	digitalWriteFast(12,LOW);
+	Serial.println(Serial2.read(),HEX);
+	Serial2.write(0xEF);
+	delayMicroseconds(10);
+	digitalWriteFast(12,HIGH);
+ 	if(_commStatus == _commRead){
+		
 		//Serial.println(Serial2.available(),DEC);
 		while(Serial2.available() < (CMD_LENGTH_SHORT-1)){}
+			//digitalWriteFast(12,HIGH);
 			cmdByte = 0;
 			for(int i = 0; i < CMD_LENGTH_SHORT-1; i++){
 				cmd[i] = Serial2.read();
@@ -957,11 +1116,10 @@ void communicate(){
 				}
 			}
 		
-		//Serial.println(cmdByte,HEX);
-		UART1_BDH = _fastBDH;
-		UART1_BDL = _fastBDL;
-		UART1_C4 = _fastC4;
-		UART1_C2 &= ~UART_C2_RE;
+		Serial.println(cmdByte,HEX);
+		//setSerialFast();
+		//digitalWriteFast(12,HIGH);
+		Serial2.begin(_fastBaud);
 		
 		switch(cmdByte){
 		case 0x00:
@@ -993,15 +1151,13 @@ void communicate(){
 		default:
 		  //got something strange, try waiting for a stop bit to syncronize
 			//resetFreq();
-			digitalWriteFast(12,LOW);
+			//digitalWriteFast(12,LOW);
 			Serial.println("error");
 			Serial.println(_bitCount,DEC);
 			
-			UART1_BDH = _slowBDH;
-			UART1_BDL = _slowBDL;
-			UART1_C4 = _slowC4;
-			UART1_C2 |= UART_C2_RE;
-			Serial2.clear();
+			//setSerialSlow();
+			Serial2.begin(_slowBaud);
+			
 			
 			uint8_t thisbyte = 0;
 		  while(thisbyte != 0xFF){
@@ -1013,12 +1169,12 @@ void communicate(){
 			_commStatus = _commIdle;
 			_bitCount = 0;
 			_writeQueue = 0;
-			digitalWriteFast(12,HIGH);
+			//digitalWriteFast(12,HIGH);
 	  }
 		//digitalWriteFast(12,HIGH);
 	}
 	else if(_commStatus == _commPoll){
-		digitalWriteFast(12,LOW);
+		//digitalWriteFast(12,LOW);
 		while(_bitCount<25){}
 		//Serial2.write((const char*)pollResponse,POLL_LENGTH);
 		for(int i = 0; i< POLL_LENGTH; i++){
@@ -1033,22 +1189,33 @@ void communicate(){
 		//digitalWriteFast(12,LOW);
  		while(_writeQueue > _bitCount){}
 		
-		UART1_BDH = _slowBDH;
-		UART1_BDL = _slowBDL;
-		UART1_C4 = _slowC4;
-		UART1_C2 |= UART_C2_RE;
+		//setSerialSlow();
+		Serial2.begin(_slowBaud);
 		
 		_bitCount = 0;
 		_commStatus = _commIdle;
 		_writeQueue = 0;
-		digitalWriteFast(12,HIGH);
-		Serial2.clear();
+		//digitalWriteFast(12,HIGH);
 	}
 	else{
 		Serial.println('a');
-	}
+	} 
 	//Serial.println(_commStatus,DEC);
 }
+ void setSerialFast(){
+	UART1_BDH = _fastBDH;
+	UART1_BDL = _fastBDL;
+	UART1_C4 = _fastC4;
+	UART1_C2 &= ~UART_C2_RE;
+}
+void setSerialSlow(){
+	UART1_BDH = _slowBDH;
+	UART1_BDL = _slowBDL;
+	UART1_C4 = _slowC4;
+	UART1_C2 |= UART_C2_RE;
+	Serial2.clear();
+}
+ */
 /*******************
 	cleanCalPoints
 	take the x and y coordinates and notch angles collected during the calibration procedure, and generate the cleaned x an y stick coordinates and the corresponding x and y notch coordinates
