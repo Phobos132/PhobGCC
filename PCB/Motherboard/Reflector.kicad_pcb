@@ -1,0 +1,112 @@
+(kicad_pcb (version 20211014) (generator pcbnew)
+
+  (general
+    (thickness 1.6)
+  )
+
+  (paper "A4")
+  (layers
+    (0 "F.Cu" signal)
+    (31 "B.Cu" signal)
+    (36 "B.SilkS" user "B.Silkscreen")
+    (37 "F.SilkS" user "F.Silkscreen")
+    (38 "B.Mask" user)
+    (39 "F.Mask" user)
+    (40 "Dwgs.User" user "User.Drawings")
+    (41 "Cmts.User" user "User.Comments")
+    (44 "Edge.Cuts" user)
+    (45 "Margin" user)
+    (46 "B.CrtYd" user "B.Courtyard")
+    (47 "F.CrtYd" user "F.Courtyard")
+  )
+
+  (setup
+    (stackup
+      (layer "F.SilkS" (type "Top Silk Screen"))
+      (layer "F.Mask" (type "Top Solder Mask") (thickness 0.01))
+      (layer "F.Cu" (type "copper") (thickness 0.035))
+      (layer "dielectric 1" (type "core") (thickness 1.51) (material "FR4") (epsilon_r 4.5) (loss_tangent 0.02))
+      (layer "B.Cu" (type "copper") (thickness 0.035))
+      (layer "B.Mask" (type "Bottom Solder Mask") (thickness 0.01))
+      (layer "B.SilkS" (type "Bottom Silk Screen"))
+      (copper_finish "None")
+      (dielectric_constraints no)
+    )
+    (pad_to_mask_clearance 0)
+    (grid_origin 150 100)
+    (pcbplotparams
+      (layerselection 0x00010fc_ffffffff)
+      (disableapertmacros false)
+      (usegerberextensions false)
+      (usegerberattributes true)
+      (usegerberadvancedattributes true)
+      (creategerberjobfile true)
+      (svguseinch false)
+      (svgprecision 6)
+      (excludeedgelayer true)
+      (plotframeref false)
+      (viasonmask false)
+      (mode 1)
+      (useauxorigin false)
+      (hpglpennumber 1)
+      (hpglpenspeed 20)
+      (hpglpendiameter 15.000000)
+      (dxfpolygonmode true)
+      (dxfimperialunits true)
+      (dxfusepcbnewfont true)
+      (psnegative false)
+      (psa4output false)
+      (plotreference true)
+      (plotvalue true)
+      (plotinvisibletext false)
+      (sketchpadsonfab false)
+      (subtractmaskfromsilk false)
+      (outputformat 1)
+      (mirror false)
+      (drillshape 1)
+      (scaleselection 1)
+      (outputdirectory "")
+    )
+  )
+
+  (net 0 "")
+
+  (gr_poly
+    (pts
+      (xy 151 100)
+      (xy 150 100)
+      (xy 151 81)
+    ) (layer "F.Cu") (width 0) (fill solid) (tstamp 34407fba-357b-4052-9216-06c1e2cae3ea))
+  (gr_poly
+    (pts
+      (xy 154 100)
+      (xy 153 100)
+      (xy 154 81)
+    ) (layer "F.Cu") (width 0) (fill solid) (tstamp 357856bd-3d3d-4160-8d89-c953aff1cccb))
+  (gr_poly
+    (pts
+      (xy 152 100)
+      (xy 151 100)
+      (xy 152 81)
+    ) (layer "F.Cu") (width 0) (fill solid) (tstamp 3e229f74-0d6e-4e2c-8163-9a65e677d459))
+  (gr_poly
+    (pts
+      (xy 153 100)
+      (xy 152 100)
+      (xy 153 81)
+    ) (layer "F.Cu") (width 0) (fill solid) (tstamp 606bb9bc-67d1-4898-a423-ea9949091f2d))
+  (gr_poly
+    (pts
+      (xy 154.99422 99.990102)
+      (xy 153.99422 99.990102)
+      (xy 154.99422 80.990102)
+    ) (layer "F.Cu") (width 0) (fill solid) (tstamp 859e81f7-b1fb-45ab-ab27-e556921da9d1))
+  (gr_poly
+    (pts
+      (xy 156 100)
+      (xy 155 100)
+      (xy 156 81)
+    ) (layer "F.Cu") (width 0) (fill solid) (tstamp f3433127-bb9b-49b8-9e37-7f0dd49405f6))
+  (gr_rect (start 150 100) (end 156 81) (layer "Edge.Cuts") (width 0.05) (fill none) (tstamp c9d7f80c-93d3-40b6-82bc-9669a79c7f05))
+
+)
