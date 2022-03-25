@@ -128,19 +128,19 @@ struct FilterGains {
     float accelThresh;//5 default for 1.2ms timesteps, larger for bigger timesteps
 };
 FilterGains _gains {
-    .maxStick = 100;
-    .xErrorIntGain = 0.05;//these values are actually timestep-compensated for in runKalman
-    .yErrorIntGain = 0.05;
-    .xMaxErrorInt = 0.1;
-    .yMaxErrorInt = 0.1;
-    .xVelDecay = 0.1;
-    .yVelDecay = 0.1;
-    .xVelPosFactor = 0.01;
-    .yVelPosFactor = 0.01;
-    .xVelDamp = 0.125;
-    .yVelDamp = 0.125;
-    .velThresh = 1.0;
-    .accelThresh = 5.0;
+    .maxStick = 100,
+    .xErrorIntGain = 0.05,//these values are actually timestep-compensated for in runKalman
+    .yErrorIntGain = 0.05,
+    .xMaxErrorInt = 0.1,
+    .yMaxErrorInt = 0.1,
+    .xVelDecay = 0.1,
+    .yVelDecay = 0.1,
+    .xVelPosFactor = 0.01,
+    .yVelPosFactor = 0.01,
+    .xVelDamp = 0.125,
+    .yVelDamp = 0.125,
+    .velThresh = 1.0,
+    .accelThresh = 5.0
 };
 
 //////values used to determine how much large of a region will count as being "in a notch"
