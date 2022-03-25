@@ -1621,6 +1621,11 @@ void runKalman(const float xZ,const float yZ){
     //    1) 1 minus the smoothed velocity divided by the velocity threshold
     //    2) 1 minus the acceleration divided by the accel threshold
     //  b) stick r^6
+    //When the stick is moving slowly, we want to weight it highly, in order to achieve
+    //  quick control for inputs such as tilts. We lock out using both velocity and
+    //  acceleration in order to rule out snapback.
+    //When the stick is near the rim, we also want instant response, and we know snapback
+    //  doesn't reach the rim.
     const float xPosWeightVelAcc = min(1, max(0, min(1 - abs(xVelSmooth)/g.velThresh, 1 - abs(xAccel)/g.accelThresh)));
     const float xPosWeight1 = max(xPosWeightVelAcc*xPosWeightVelAcc, stickDistance6);
     const float xPosWeight2 = 1-xPosWeight1;
