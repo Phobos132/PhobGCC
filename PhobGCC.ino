@@ -1544,21 +1544,21 @@ void runKalman(const float xZ,const float yZ){
 	//Serial.println(_dT);
 
     //set up gains according to the time delta.
-    //The reference time delta used to tune was 1.2 ms, or 1200 microseconds.
+    //The reference time delta used to tune was 1.2 ms.
     FilterGains g;
     g.maxStick      = _gains.maxStick*_gains.maxStick;//we actually use the square
-    g.xErrorIntGain = _gains.xErrorIntGain * _dT/1200;
-    g.yErrorIntGain = _gains.yErrorIntGain * _dT/1200;
-    g.xMaxErrInt    = _gains.xMaxErrInt    * _dT/1200;
-    g.yMaxErrInt    = _gains.yMaxErrInt    * _dT/1200;
-    g.xVelDecay     = _gains.xVelDecay     * _dT/1200;
-    g.yVelDecay     = _gains.yVelDecay     * _dT/1200;
-    g.xVelPosFactor = _gains.xVelPosFactor * _dT/1200;
-    g.yVelPosFactor = _gains.yVelPosFactor * _dT/1200;
-    g.xVelDamp      = _gains.xVelDamp      * 1200/_dT;
-    g.yVelDamp      = _gains.yVelDamp      * 1200/_dT;
-    g.velThresh     = _gains.velThresh     * _dT/1200;
-    g.accelThresh   = _gains.accelThresh   * _dT/1200;
+    g.xErrorIntGain = _gains.xErrorIntGain * _dT/1.2;
+    g.yErrorIntGain = _gains.yErrorIntGain * _dT/1.2;
+    g.xMaxErrInt    = _gains.xMaxErrInt    * _dT/1.2;
+    g.yMaxErrInt    = _gains.yMaxErrInt    * _dT/1.2;
+    g.xVelDecay     = _gains.xVelDecay     * _dT/1.2;
+    g.yVelDecay     = _gains.yVelDecay     * _dT/1.2;
+    g.xVelPosFactor = _gains.xVelPosFactor * _dT/1.2;
+    g.yVelPosFactor = _gains.yVelPosFactor * _dT/1.2;
+    g.xVelDamp      = _gains.xVelDamp      * 1.2/_dT;
+    g.yVelDamp      = _gains.yVelDamp      * 1.2/_dT;
+    g.velThresh     = _gains.velThresh     * _dT/1.2;
+    g.accelThresh   = _gains.accelThresh   * _dT/1.2;
 
     //save previous values of state
     //float _xPos;//input of kalman filter
