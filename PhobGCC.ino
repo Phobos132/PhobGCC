@@ -1549,18 +1549,18 @@ void runKalman(const float xZ,const float yZ){
     const float timeFactor = _dT / 1.2;
     const float timeDivisor = 1.2 / _dT;
     g.maxStick      = _gains.maxStick*_gains.maxStick;//we actually use the square
-    g.xErrorIntGain = _gains.xErrorIntGain * timeFactor;
-    g.yErrorIntGain = _gains.yErrorIntGain * timeFactor;
-    g.xMaxErrorInt  = _gains.xMaxErrorInt  * timeFactor;
-    g.yMaxErrorInt  = _gains.yMaxErrorInt  * timeFactor;
-    g.xVelDecay     = _gains.xVelDecay     * timeFactor;
-    g.yVelDecay     = _gains.yVelDecay     * timeFactor;
-    g.xVelPosFactor = _gains.xVelPosFactor * timeFactor;
-    g.yVelPosFactor = _gains.yVelPosFactor * timeFactor;
-    g.xVelDamp      = _gains.xVelDamp      * timeDivisor;
-    g.yVelDamp      = _gains.yVelDamp      * timeDivisor;
-    g.velThresh     = _gains.velThresh     * timeFactor;
-    g.accelThresh   = _gains.accelThresh   * timeFactor;
+    g.xErrorIntGain = _gains.xErrorIntGain  * timeFactor;
+    g.yErrorIntGain = _gains.yErrorIntGain  * timeFactor;
+    g.xMaxErrorInt  = _gains.xMaxErrorInt   * timeFactor;
+    g.yMaxErrorInt  = _gains.yMaxErrorInt   * timeFactor;
+    g.xVelDecay     = _gains.xVelDecay      * timeFactor;
+    g.yVelDecay     = _gains.yVelDecay      * timeFactor;
+    g.xVelPosFactor = _gains.xVelPosFactor  * timeFactor;
+    g.yVelPosFactor = _gains.yVelPosFactor  * timeFactor;
+    g.xVelDamp      = _gains.xVelDamp       * timeDivisor;
+    g.yVelDamp      = _gains.yVelDamp       * timeDivisor;
+    g.velThresh     = 1/(_gains.velThresh   * timeFactor);//slight optimization by using the inverse
+    g.accelThresh   = 1/(_gains.accelThresh * timeFactor);
 
     //save previous values of state
     //float _xPos;//input of kalman filter
@@ -1628,10 +1628,10 @@ void runKalman(const float xZ,const float yZ){
     //  acceleration in order to rule out snapback.
     //When the stick is near the rim, we also want instant response, and we know snapback
     //  doesn't reach the rim.
-    const float xPosWeightVelAcc = min(1, max(0, min(1 - abs(xVelSmooth)/g.velThresh, 1 - abs(xAccel)/g.accelThresh)));
+    const float xPosWeightVelAcc = min(1, max(0, min(1 - abs(xVelSmooth)*g.velThresh, 1 - abs(xAccel)*g.accelThresh)));
     const float xPosWeight1 = max(xPosWeightVelAcc*xPosWeightVelAcc, stickDistance6);
     const float xPosWeight2 = 1-xPosWeight1;
-    const float yPosWeightVelAcc = min(1, max(0, min(1 - abs(yVelSmooth)/g.velThresh, 1 - abs(yAccel)/g.accelThresh)));
+    const float yPosWeightVelAcc = min(1, max(0, min(1 - abs(yVelSmooth)*g.velThresh, 1 - abs(yAccel)*g.accelThresh)));
     const float yPosWeight1 = max(yPosWeightVelAcc*yPosWeightVelAcc, stickDistance6);
     const float yPosWeight2 = 1-yPosWeight1;
 
