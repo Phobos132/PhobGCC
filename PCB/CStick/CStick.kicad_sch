@@ -579,6 +579,23 @@
     (pin "2" (uuid 7af39754-ff84-42ea-8cd6-24d9f1d825e7))
   )
 
+  (symbol (lib_id "Mechanical:MountingHole") (at 91.44 137.16 0) (unit 1)
+    (in_bom yes) (on_board yes) (fields_autoplaced)
+    (uuid 5a8a64e8-0b04-48e4-b608-5cc887a127c8)
+    (property "Reference" "H3" (id 0) (at 93.98 136.2515 0)
+      (effects (font (size 1.27 1.27)) (justify left))
+    )
+    (property "Value" "MountingHole" (id 1) (at 93.98 139.0266 0)
+      (effects (font (size 1.27 1.27)) (justify left))
+    )
+    (property "Footprint" "Gamecube MB:MountingHole_2.0mm" (id 2) (at 91.44 137.16 0)
+      (effects (font (size 1.27 1.27)) hide)
+    )
+    (property "Datasheet" "~" (id 3) (at 91.44 137.16 0)
+      (effects (font (size 1.27 1.27)) hide)
+    )
+  )
+
   (symbol (lib_id "Connector:Conn_01x04_Male") (at 57.15 72.39 0) (unit 1)
     (in_bom yes) (on_board yes) (fields_autoplaced)
     (uuid 61d7b681-5321-4eb3-aa94-2064a3bbd361)
@@ -675,6 +692,23 @@
     )
   )
 
+  (symbol (lib_id "Mechanical:MountingHole") (at 91.44 147.32 0) (unit 1)
+    (in_bom yes) (on_board yes) (fields_autoplaced)
+    (uuid ff8c2871-7c9b-4de3-baec-30db09fd1a6f)
+    (property "Reference" "H4" (id 0) (at 93.98 146.4115 0)
+      (effects (font (size 1.27 1.27)) (justify left))
+    )
+    (property "Value" "MountingHole" (id 1) (at 93.98 149.1866 0)
+      (effects (font (size 1.27 1.27)) (justify left))
+    )
+    (property "Footprint" "Gamecube MB:MountingHole_2.0mm" (id 2) (at 91.44 147.32 0)
+      (effects (font (size 1.27 1.27)) hide)
+    )
+    (property "Datasheet" "~" (id 3) (at 91.44 147.32 0)
+      (effects (font (size 1.27 1.27)) hide)
+    )
+  )
+
   (sheet_instances
     (path "/" (page "1"))
   )
@@ -694,6 +728,12 @@
     )
     (path "/c81d9d6d-1d38-4944-acfb-04c9f7e7b5cc"
       (reference "H2") (unit 1) (value "MountingHole") (footprint "Gamecube MB:MountingHole_5.2mm")
+    )
+    (path "/5a8a64e8-0b04-48e4-b608-5cc887a127c8"
+      (reference "H3") (unit 1) (value "MountingHole") (footprint "Gamecube MB:MountingHole_2.0mm")
+    )
+    (path "/ff8c2871-7c9b-4de3-baec-30db09fd1a6f"
+      (reference "H4") (unit 1) (value "MountingHole") (footprint "Gamecube MB:MountingHole_2.0mm")
     )
     (path "/61d7b681-5321-4eb3-aa94-2064a3bbd361"
       (reference "J1") (unit 1) (value "Conn_01x04_Male") (footprint "Connector_PinHeader_2.00mm:PinHeader_1x04_P2.00mm_Vertical")
