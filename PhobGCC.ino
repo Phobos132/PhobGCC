@@ -188,8 +188,8 @@ const int _eepromCNotchAngles = _eepromANotchAngles+_noOfNotches*_bytesPerFloat;
 
 
 Bounce bounceDr = Bounce();
-Bounce bounceDu = Bounce(); 
-Bounce bounceDl = Bounce(); 
+Bounce bounceDu = Bounce();
+Bounce bounceDl = Bounce();
 Bounce bounceDd = Bounce();
 
 ADC *adc = new ADC();
@@ -197,7 +197,7 @@ ADC *adc = new ADC();
 union Buttons{
 	uint8_t arr[10];
 	struct {
-		
+
 				// byte 0
 		uint8_t A : 1;
 		uint8_t B : 1;
@@ -207,7 +207,7 @@ union Buttons{
 		uint8_t orig : 1;
 		uint8_t errL : 1;
 		uint8_t errS : 1;
-		
+
 		// byte 1
 		uint8_t Dl : 1;
 		uint8_t Dr : 1;
@@ -307,7 +307,7 @@ static int _commPoll = 2;
 static int _commWrite = 3;
 
 void setup() {
-	
+
 	//start USB serial
 	Serial.begin(57600);
 	Serial.println("Software version b1.1s0.1 (hopefully Phobos remembered to update this message)");
@@ -315,13 +315,13 @@ void setup() {
 	delay(1000);
 
 	readEEPROM();
-	
+
 	//set some of the unused values in the message response
 	btn.errS = 0;
 	btn.errL = 0;
 	btn.orig = 0;
 	btn.high = 1;
-	
+
 	_currentCalStep = _notCalibrating;
 
     /*
@@ -340,26 +340,26 @@ void setup() {
     _yVelFilt = 0;
 
 	_lastMicros = micros();
-	
+
 	//analogReference(1);
-	
+
 	adc->adc0->setReference(ADC_REFERENCE::REF_EXT);
 	adc->adc0->setAveraging(8); // set number of averages
   adc->adc0->setResolution(12); // set bits of resolution
   adc->adc0->setConversionSpeed(ADC_CONVERSION_SPEED::MED_SPEED ); // change the conversion speed
   adc->adc0->setSamplingSpeed(ADC_SAMPLING_SPEED::VERY_LOW_SPEED ); // change the sampling speed
-/* 
+/*
   adc->adc1->setAveraging(32); // set number of averages
   adc->adc1->setResolution(16); // set bits of resolution
   adc->adc1->setConversionSpeed(ADC_CONVERSION_SPEED::VERY_LOW_SPEED ); // change the conversion speed
   adc->adc1->setSamplingSpeed(ADC_SAMPLING_SPEED::VERY_LOW_SPEED ); // change the sampling speed
    */
 	setPinModes();
-	
-	
-/* 
+
+
+/*
 	VREF::start();
-		
+
 	double refVoltage = 0;
 	for(int i = 0; i < 512; i++){
 		int value = adc->adc1->analogRead(ADC_INTERNAL_SOURCE::VREF_OUT);
@@ -367,19 +367,19 @@ void setup() {
 		refVoltage += volts;
 	}
 	refVoltage = refVoltage/512.0;
-	
+
 
 	Serial.print("the reference voltage read was:");
 	Serial.println(refVoltage,8);
 	_ADCScale = 1.2/refVoltage;
-	
+
 	adc->adc1->setAveraging(4); // set number of averages
   adc->adc1->setResolution(12); // set bits of resolution
   adc->adc1->setConversionSpeed(ADC_CONVERSION_SPEED::MED_SPEED ); // change the conversion speed
   adc->adc1->setSamplingSpeed(ADC_SAMPLING_SPEED::VERY_LOW_SPEED ); // change the sampling speed
-	
+
 	_ADCScaleFactor = 0.001*1.2*adc->adc1->getMaxValue()/3.3; */
-	
+
 	//_slowBaud = findFreq();
   //serialFreq = 950000;
 	//Serial.print("starting hw serial at freq:");
@@ -412,7 +412,7 @@ void loop() {
 		else{
 			adjustNotch(_currentCalStep,_dT,btn.Y,btn.X,false,_cNotchAngles,_cNotchStatus);
 		}
-			
+
 	}
 	//check if we should be reporting values yet
 	if(btn.B && !_running){
@@ -432,7 +432,7 @@ void readEEPROM(){
 		_jumpConfig = 0;
 	}
 	setJump(_jumpConfig);
-	
+
 	//get the x-axis snapback filter settings
 	EEPROM.get(_eepromADCVarX, _ADCVarSlowX);
 	Serial.print("the _ADCVarSlowX value from eeprom is:");
@@ -448,7 +448,7 @@ void readEEPROM(){
 	else if(_ADCVarSlowX < _ADCVarMin){
 		_ADCVarSlowX = _ADCVarMin;
 	}
-	
+
 	//get the y-axis snapback fitler settings
 	EEPROM.get(_eepromADCVarY, _ADCVarSlowY);
 	Serial.print("the _ADCVarSlowY value from eeprom is:");
@@ -464,11 +464,11 @@ void readEEPROM(){
 	else if(_ADCVarSlowY < _ADCVarMin){
 		_ADCVarSlowY = _ADCVarMin;
 	}
-	
+
 	//set the snapback filtering
 	setADCVar(&_aADCVarX, &_bADCVarX, _ADCVarSlowX);
 	setADCVar(&_aADCVarY, &_bADCVarY, _ADCVarSlowY);
-	
+
 	//get the calibration points collected during the last A stick calibration
 	EEPROM.get(_eepromAPointsX, _tempCalPointsX);
 	EEPROM.get(_eepromAPointsY, _tempCalPointsY);
@@ -479,7 +479,7 @@ void readEEPROM(){
 	Serial.println("A stick linearized");
 	notchCalibrate(_cleanedPointsX,_cleanedPointsY, _notchPointsX, _notchPointsY, _noOfNotches, _aAffineCoeffs, _aBoundaryAngles);
 	//stickCal(_cleanedPointsX,_cleanedPointsY,_aNotchAngles,_aFitCoeffsX,_aFitCoeffsY,_aAffineCoeffs,_aBoundaryAngles);
-	
+
 	//get the calibration points collected during the last A stick calibration
 	EEPROM.get(_eepromCPointsX, _tempCalPointsX);
 	EEPROM.get(_eepromCPointsY, _tempCalPointsY);
@@ -493,26 +493,26 @@ void readEEPROM(){
 }
 void resetDefaults(){
 	Serial.println("RESETTING ALL DEFAULTS");
-	
+
 	_jumpConfig = 0;
 	setJump(_jumpConfig);
 	EEPROM.put(_eepromJump,_jumpConfig);
-	
+
 	_ADCVarSlowX = _ADCVarMin;
 	EEPROM.put(_eepromADCVarX,_ADCVarSlowX);
 	_ADCVarSlowY = _ADCVarMin;
 	EEPROM.put(_eepromADCVarY,_ADCVarSlowY);
-	
+
 	setADCVar(&_aADCVarX, &_bADCVarX, _ADCVarSlowX);
 	setADCVar(&_aADCVarY, &_bADCVarY, _ADCVarSlowY);
-	
+
 	for(int i = 0; i < _noOfNotches; i++){
 		_aNotchAngles[i] = _notchAngleDefaults[i];
 		_cNotchAngles[i] = _notchAngleDefaults[i];
 	}
 	EEPROM.put(_eepromANotchAngles,_aNotchAngles);
 	EEPROM.put(_eepromCNotchAngles,_cNotchAngles);
-	
+
 	for(int i = 0; i < _noOfCalibrationPoints; i++){
 		_tempCalPointsX[i] = _aDefaultCalPointsX[i];
 		_tempCalPointsY[i] = _aDefaultCalPointsY[i];
@@ -526,24 +526,24 @@ void resetDefaults(){
 	linearizeCal(_cleanedPointsX,_cleanedPointsY,_cleanedPointsX,_cleanedPointsY,_aFitCoeffsX,_aFitCoeffsY);
 	Serial.println("A stick linearized");
 	notchCalibrate(_cleanedPointsX,_cleanedPointsY, _notchPointsX, _notchPointsY, _noOfNotches, _aAffineCoeffs, _aBoundaryAngles);
-	
+
 	for(int i = 0; i < _noOfCalibrationPoints; i++){
 		_tempCalPointsX[i] = _cDefaultCalPointsX[i];
 		_tempCalPointsY[i] = _cDefaultCalPointsY[i];
 	}
 	EEPROM.put(_eepromCPointsX,_tempCalPointsX);
 	EEPROM.put(_eepromCPointsY,_tempCalPointsY);
-	
+
 	Serial.println("C calibration points stored in EEPROM");
 	cleanCalPoints(_tempCalPointsX,_tempCalPointsY,_cNotchAngles,_cleanedPointsX,_cleanedPointsY,_notchPointsX,_notchPointsY);
 	Serial.println("C calibration points cleaned");
 	linearizeCal(_cleanedPointsX,_cleanedPointsY,_cleanedPointsX,_cleanedPointsY,_cFitCoeffsX,_cFitCoeffsY);
 	Serial.println("C stick linearized");
 	notchCalibrate(_cleanedPointsX,_cleanedPointsY, _notchPointsX, _notchPointsY, _noOfNotches, _cAffineCoeffs, _cBoundaryAngles);
-	
+
 }
 void setPinModes(){
-	
+
 	pinMode(_pinL,INPUT_PULLUP);
 	pinMode(_pinR,INPUT_PULLUP);
 	pinMode(_pinDr,INPUT_PULLUP);
@@ -557,7 +557,7 @@ void setPinModes(){
 	pinMode(_pinZ,INPUT_PULLUP);
 	pinMode(_pinS,INPUT_PULLUP);
 
-	
+
 	bounceDr.attach(_pinDr);
 	bounceDr.interval(1000);
 	bounceDu.attach(_pinDu);
@@ -580,13 +580,13 @@ void readButtons(){
 	btn.Dd = !digitalRead(_pinDd);
 	btn.Dl = !digitalRead(_pinDl);
 	btn.Dr = !digitalRead(_pinDr);
-	
+
 	bounceDr.update();
 	bounceDu.update();
 	bounceDl.update();
 	bounceDd.update();
-	
-	
+
+
 	//check the dpad buttons to change the controller settings
 	if(bounceDr.fell()){
 		if(_currentCalStep == -1){
@@ -597,7 +597,7 @@ void readButtons(){
 		else if (!_calAStick){
 			collectCalPoints(_calAStick, _currentCalStep,_tempCalPointsX,_tempCalPointsY);
 			_currentCalStep ++;
-			
+
 			if(_currentCalStep >= _noOfNotches*2){
 				Serial.println("finished collecting the calibration points for the C stick");
 				EEPROM.put(_eepromCPointsX,_tempCalPointsX);
@@ -627,7 +627,7 @@ void readButtons(){
 		else if (_calAStick){
 			collectCalPoints(_calAStick, _currentCalStep,_tempCalPointsX,_tempCalPointsY);
 			_currentCalStep ++;
-			
+
 			if(_currentCalStep >= _noOfNotches*2){
 				Serial.println("finished collecting the calibration points for the A stick");
 				EEPROM.put(_eepromAPointsX,_tempCalPointsX);
@@ -649,9 +649,9 @@ void readButtons(){
 	else if(bounceDd.fell()){
 		readJumpConfig();
 	}
-	/* 
+	/*
 	bool dPad = (btn.Dl || btn.Dr);
-	
+
 	if(dPad && !_lastDPad){
 		_dPadSince = millis();
 		_watchingDPad = true;
@@ -693,7 +693,7 @@ void adjustSnapback(int cStickX, int cStickY){
 	else if(_ADCVarSlowX < _ADCVarMin){
 		_ADCVarSlowX = _ADCVarMin;
 	}
-	
+
 	if(cStickY > 127+50){
 		_ADCVarSlowY = _ADCVarSlowY*1.1;
 		Serial.print("Y filtering increased to:");
@@ -710,33 +710,33 @@ void adjustSnapback(int cStickX, int cStickY){
 	else if(_ADCVarSlowY < _ADCVarMin){
 		_ADCVarSlowY = _ADCVarMin;
 	}
-	
+
 	Serial.println("Var scale parameters");
 	Serial.println(_varScale);
 	Serial.println(_varOffset);
-	
+
 	float xVarDisplay = 10*(log( _varScale*_ADCVarSlowX + _varOffset)+4.60517);
 	float yVarDisplay = 10*(log( _varScale*_ADCVarSlowY + _varOffset)+4.60517);
-	
+
 	Serial.println("Var display results");
 		Serial.println(xVarDisplay);
 	Serial.println(yVarDisplay);
-	
-	
+
+
 	btn.Cx = (uint8_t) (xVarDisplay + 127.5);
 	btn.Cy = (uint8_t) (yVarDisplay + 127.5);
-	
+
 	setPole();
-	
+
 	int startTime = millis();
 	int delta = 0;
 	while(delta < 2000){
 		delta = millis() - startTime;
 	}
-	
+
 	setADCVar(&_aADCVarX, &_bADCVarX, _ADCVarSlowX);
 	setADCVar(&_aADCVarY, &_bADCVarY, _ADCVarSlowY);
-	
+
 	EEPROM.put(_eepromADCVarX,_ADCVarSlowX);
 	EEPROM.put(_eepromADCVarY,_ADCVarSlowY);
 }
@@ -763,7 +763,7 @@ void setJump(int jumpConfig){
 				_pinZSwappable = _pinX;
 				_pinXSwappable = _pinZ;
 				_pinYSwappable = _pinY;
-				break;				
+				break;
 			case 2:
 				_pinZSwappable = _pinY;
 				_pinXSwappable = _pinX;
@@ -792,21 +792,21 @@ void readSticks(){
 	Serial.print(_aStickY);
 	Serial.print(",");
 	Serial.println(_ADCScale); */
-	
-	
+
+
 	//read the L and R sliders
 	btn.La = adc->adc0->analogRead(_pinLa)>>4;
 	btn.Ra = adc->adc0->analogRead(_pinRa)>>4;
-	
+
 	//read the C stick
 	//btn.Cx = adc->adc0->analogRead(pinCx)>>4;
 	//btn.Cy = adc->adc0->analogRead(pinCy)>>4;
 
-	
-	//read the c stick, scale it down so that we don't get huge values when we linearize 
+
+	//read the c stick, scale it down so that we don't get huge values when we linearize
 	_cStickX = (_cStickX + adc->adc0->analogRead(_pinCx)/4096.0)*0.5;
 	_cStickY = (_cStickY + adc->adc0->analogRead(_pinCy)/4096.0)*0.5;
-	
+
 	//create the measurement vector to be used in the kalman filter
 	float xZ;
 	float yZ;
@@ -822,7 +822,7 @@ void readSticks(){
 	//float posCy = (_aFitCoeffsY[1]*(_cStickY*_cStickY*_cStickY) + _aFitCoeffsY[1]*(_cStickY*_cStickY) + _aFitCoeffsY[2]*_cStickY + _aFitCoeffsY[3]);
   float posCx = linearize(_cStickX,_cFitCoeffsX);
 	float posCy = linearize(_cStickY,_cFitCoeffsY);
-	
+
 	//Run the kalman filter to eliminate snapback
 	runKalman(xZ,yZ);
 /* 	Serial.println();
@@ -841,21 +841,21 @@ void readSticks(){
 
 	notchRemap(_xPosFilt, _yPosFilt, &posAx,  &posAy, _aAffineCoeffs, _aBoundaryAngles,_noOfNotches);
 	notchRemap(posCx,posCy, &posCx,  &posCy, _cAffineCoeffs, _cBoundaryAngles,_noOfNotches);
-	
+
 	float filterWeight = 0.8;
 	_velFilterX = filterWeight*_velFilterX + (1-filterWeight)*(posAx-_aStickLastX)/_dT;
 	_velFilterY = filterWeight*_velFilterY + (1-filterWeight)*(posAy-_aStickLastY)/_dT;
 	//assign the remapped values to the button struct
 	if(_running){
-		
+
 /* 		if((_velFilterX < _podeThreshX) && (_velFilterX > -_podeThreshX)){
 			btn.Ax = (uint8_t) (posAx+127.5);
 		}
-		
+
 		if((_velFilterY < _podeThreshY) && (_velFilterY > -_podeThreshY)){
 			btn.Ay = (uint8_t) (posAy+127.5);
 		} */
-	
+
 		btn.Ax = (uint8_t) (posAx+127.5);
 		btn.Ay = (uint8_t) (posAy+127.5);
 		btn.Cx = (uint8_t) (posCx+127.5);
@@ -868,10 +868,10 @@ void readSticks(){
 		btn.Cx = 127;
 		btn.Cy = 127;
 	}
-	
+
 	_aStickLastX = posAx;
 	_aStickLastY = posAy;
-	
+
 	//Serial.println();
 	//Serial.print(_dT/16.7);
 	//Serial.print(",");
@@ -896,12 +896,12 @@ void readSticks(){
 void notchRemap(float xIn, float yIn, float* xOut, float* yOut, float affineCoeffs[][6], float regionAngles[], int regions){
 	//determine the angle between the x unit vector and the current position vector
 	float angle = atan2f(yIn,xIn);
-	
+
 	//unwrap the angle based on the first region boundary
 	if(angle < regionAngles[0]){
 		angle += M_PI*2;
 	}
-	
+
 	//go through the region boundaries from lowest angle to highest, checking if the current position vector is in that region
 	//if the region is not found then it must be between the first and the last boundary, ie the last region
 	//we check GATE_REGIONS*2 because each notch has its own very small region we use to make notch values more consistent
@@ -917,7 +917,7 @@ void notchRemap(float xIn, float yIn, float* xOut, float* yOut, float affineCoef
 	//Apply the affine transformation using the coefficients found during calibration
 	*xOut = affineCoeffs[region][0]*xIn + affineCoeffs[region][1]*yIn + affineCoeffs[region][2];
 	*yOut = affineCoeffs[region][3]*xIn + affineCoeffs[region][4]*yIn + affineCoeffs[region][5];
-	
+
 	if((abs(*xOut)<5) && (abs(*yOut)>95)){
 		*xOut = 0;
 	}
@@ -1016,13 +1016,13 @@ void communicate(){
 					break;
 				}
 			}
-		
+
 		//Serial.println(cmdByte,HEX);
 		UART1_BDH = _fastBDH;
 		UART1_BDL = _fastBDL;
 		UART1_C4 = _fastC4;
 		UART1_C2 &= ~UART_C2_RE;
-		
+
 		switch(cmdByte){
 		case 0x00:
 			//digitalWriteFast(12,LOW);
@@ -1056,13 +1056,13 @@ void communicate(){
 			digitalWriteFast(12,LOW);
 			Serial.println("error");
 			Serial.println(_bitCount,DEC);
-			
+
 			UART1_BDH = _slowBDH;
 			UART1_BDL = _slowBDL;
 			UART1_C4 = _slowC4;
 			UART1_C2 |= UART_C2_RE;
 			Serial2.clear();
-			
+
 			uint8_t thisbyte = 0;
 		  while(thisbyte != 0xFF){
 				while(!Serial2.available());
@@ -1092,12 +1092,12 @@ void communicate(){
 	else if(_commStatus == _commWrite){
 		//digitalWriteFast(12,LOW);
  		while(_writeQueue > _bitCount){}
-		
+
 		UART1_BDH = _slowBDH;
 		UART1_BDL = _slowBDL;
 		UART1_C4 = _slowC4;
 		UART1_C2 |= UART_C2_RE;
-		
+
 		_bitCount = 0;
 		_commStatus = _commIdle;
 		_writeQueue = 0;
@@ -1114,41 +1114,41 @@ void communicate(){
 	take the x and y coordinates and notch angles collected during the calibration procedure, and generate the cleaned x an y stick coordinates and the corresponding x and y notch coordinates
 *******************/
 void cleanCalPoints(float calPointsX[], float  calPointsY[], float notchAngles[], float cleanedPointsX[], float cleanedPointsY[], float notchPointsX[], float notchPointsY[]){
-	
+
 	Serial.println("The raw calibration points (x,y) are:");
 	for(int i = 0; i< _noOfCalibrationPoints; i++){
 		Serial.print(calPointsX[i]);
 		Serial.print(",");
 		Serial.println(calPointsY[i]);
 	}
-	
+
 	Serial.println("The notch angles are:");
 	for(int i = 0; i< _noOfNotches; i++){
 		Serial.println(notchAngles[i]);
 	}
-	
+
 	notchPointsX[0] = 0;
 	notchPointsY[0] = 0;
 	cleanedPointsX[0] = 0;
 	cleanedPointsY[0] = 0;
-	
+
 	for(int i = 0; i < _noOfNotches; i++){
 			//add the origin values toe the first x,y point
 			cleanedPointsX[0] += calPointsX[i*2];
 			cleanedPointsY[0] += calPointsY[i*2];
-			
+
 			//set the notch point
 			cleanedPointsX[i+1] = calPointsX[i*2+1];
 			cleanedPointsY[i+1] = calPointsY[i*2+1];
-			
+
 			calcStickValues(notchAngles[i], notchPointsX+i+1, notchPointsY+i+1);
 		}
-		
+
 
 		//divide by the total number of calibration steps/2 to get the average origin value
 		cleanedPointsX[0] = cleanedPointsX[0]/((float)_noOfNotches);
 		cleanedPointsY[0] = cleanedPointsY[0]/((float)_noOfNotches);
-		
+
 	for(int i = 0; i < _noOfNotches; i++){
 		float deltaX = cleanedPointsX[i+1] - cleanedPointsX[0];
 		float deltaY = cleanedPointsY[i+1] - cleanedPointsY[0];
@@ -1156,25 +1156,25 @@ void cleanCalPoints(float calPointsX[], float  calPointsY[], float notchAngles[]
 		if(mag < 0.02){
 			int prevIndex = (i-1+_noOfNotches) % _noOfNotches+1;
 			int nextIndex = (i+1) % _noOfNotches+1;
-			
+
 			cleanedPointsX[i+1] = (cleanedPointsX[prevIndex] + cleanedPointsX[nextIndex])/2.0;
 			cleanedPointsY[i+1] = (cleanedPointsY[prevIndex] + cleanedPointsY[nextIndex])/2.0;
-			
+
 			notchPointsX[i+1] = (notchPointsX[prevIndex] + notchPointsX[nextIndex])/2.0;
 			notchPointsY[i+1] = (notchPointsY[prevIndex] + notchPointsY[nextIndex])/2.0;
-			
+
 			Serial.print("no input was found for notch: ");
 			Serial.println(i+1);
 		}
 	}
-	
+
 	Serial.println("The cleaned calibration points are:");
 	for(int i = 0; i< (_noOfNotches+1); i++){
 		Serial.print(cleanedPointsX[i]);
 		Serial.print(",");
 		Serial.println(cleanedPointsY[i]);
 	}
-	
+
 	Serial.println("The corresponding notch points are:");
 	for(int i = 0; i< (_noOfNotches+1); i++){
 		Serial.print(notchPointsX[i]);
@@ -1182,7 +1182,7 @@ void cleanCalPoints(float calPointsX[], float  calPointsY[], float notchAngles[]
 		Serial.println(notchPointsY[i]);
 	}
 }
-void adjustNotch(int currentStep, int loopDelta, bool CW, int CCW, bool calibratingAStick, float notchAngles[], int notchStatus[]){
+void adjustNotch(int currentStep, float loopDelta, bool CW, int CCW, bool calibratingAStick, float notchAngles[], int notchStatus[]){
 	float X = 0;
 	float Y = 0;
 	//don't run on center steps
@@ -1215,12 +1215,12 @@ void adjustNotch(int currentStep, int loopDelta, bool CW, int CCW, bool calibrat
 	}
 }
 void collectCalPoints(bool aStick, int currentStep, float calPointsX[], float calPointsY[]){
-	
+
 	Serial.print("Collecting cal point for step: ");
 	Serial.println(currentStep);
 	float X = 0;
 	float Y = 0;
-	
+
 	for(int i = 0; i < 128; i++){
 		if(aStick){
 			//_ADCScale = _ADCScale*0.999 + _ADCScaleFactor/adc->adc1->analogRead(ADC_INTERNAL_SOURCE::VREF_OUT);
@@ -1234,10 +1234,10 @@ void collectCalPoints(bool aStick, int currentStep, float calPointsX[], float ca
 			Y += adc->adc0->analogRead(_pinCy)/4096.0;
 		}
 	}
-	
+
 	calPointsX[currentStep] = X/128.0;
 	calPointsY[currentStep] = Y/128.0;
-	
+
 	Serial.println("The collected coordinates are: ");
 	Serial.println(calPointsX[currentStep],8);
 	Serial.println(calPointsY[currentStep],8);
@@ -1252,75 +1252,75 @@ void collectCalPoints(bool aStick, int currentStep, float calPointsX[], float ca
 *******************/
 void linearizeCal(float inX[],float inY[],float outX[], float outY[], float fitCoeffsX[],float fitCoeffsY[]){
 	Serial.println("beginning linearization");
-	
+
 	//do the curve fit first
 	//generate all the notched/not notched specific cstick values we will need
-	
+
 	double fitPointsX[5];
 	double fitPointsY[5];
-	
+
 	fitPointsX[0] = inX[8+1];
 	fitPointsX[1] = (inX[6+1] + inX[10+1])/2.0;
 	fitPointsX[2] = inX[0];
 	fitPointsX[3] = (inX[2+1] + inX[14+1])/2.0;
 	fitPointsX[4] = inX[0+1];
-	
+
 	fitPointsY[0] = inY[12+1];
 	fitPointsY[1] = (inY[10+1] + inY[14+1])/2.0;
 	fitPointsY[2] = inY[0];
 	fitPointsY[3] = (inY[6+1] + inY[2+1])/2.0;
 	fitPointsY[4] = inY[4+1];
-	
-	
+
+
 	//////determine the coefficients needed to linearize the stick
 	//create the expected output, what we want our curve to be fit too
 	//this is hard coded because it doesn't depend on the notch adjustments
 	double x_output[5] = {27.5,53.2537879754,127.5,201.7462120246,227.5};
 	double y_output[5] = {27.5,53.2537879754,127.5,201.7462120246,227.5};
-	
+
 	Serial.println("The fit input points are (x,y):");
 	for(int i = 0; i < 5; i++){
 		Serial.print(fitPointsX[i],8);
 		Serial.print(",");
 		Serial.println(fitPointsY[i],8);
 	}
-	
+
 	Serial.println("The corresponding fit output points are (x,y):");
 	for(int i = 0; i < 5; i++){
 		Serial.print(x_output[i]);
 		Serial.print(",");
 		Serial.println(y_output[i]);
 	}
-	
+
 	//perform the curve fit, order is 3
 	double tempCoeffsX[_fitOrder+1];
 	double tempCoeffsY[_fitOrder+1];
 
 	fitCurve(_fitOrder, 5, fitPointsX, x_output, _fitOrder+1,  tempCoeffsX);
 	fitCurve(_fitOrder, 5, fitPointsY, y_output, _fitOrder+1, tempCoeffsY);
-	
+
 		//write these coefficients to the array that was passed in, this is our first output
 	for(int i = 0; i < (_fitOrder+1); i++){
 		fitCoeffsX[i] = tempCoeffsX[i];
 		fitCoeffsY[i] = tempCoeffsY[i];
 	}
-	
+
 	//we will now take out the offset, making the range -100 to 100 isntead of 28 to 228
 	//calculate the offset
 	float xZeroError = linearize((float)fitPointsX[2],fitCoeffsX);
 	float yZeroError = linearize((float)fitPointsY[2],fitCoeffsY);
-	
+
 	//Adjust the fit so that the stick zero position is 0
 	fitCoeffsX[3] = fitCoeffsX[3] - xZeroError;
 	fitCoeffsY[3] = fitCoeffsY[3] - yZeroError;
-	
+
 	Serial.println("The fit coefficients are  are (x,y):");
 	for(int i = 0; i < 4; i++){
 		Serial.print(fitCoeffsX[i]);
 		Serial.print(",");
 		Serial.println(fitCoeffsY[i]);
 	}
-	
+
 	Serial.println("The linearized points are:");
 	for(int i = 0; i <= _noOfNotches; i++){
 		outX[i] = linearize(inX[i],fitCoeffsX);
@@ -1329,18 +1329,18 @@ void linearizeCal(float inX[],float inY[],float outX[], float outY[], float fitC
 		Serial.print(",");
 		Serial.println(outY[i],8);
 	}
-	
+
 }
 
 void notchCalibrate(float xIn[], float yIn[], float xOut[], float yOut[], int regions, float allAffineCoeffs[][6], float regionAngles[]){
 	for(int i = 1; i <= regions; i++){
       Serial.print("calibrating region: ");
       Serial.println(i);
-      
+
 		MatrixXf pointsIn(3,3);
 
     MatrixXf pointsOut(3,3);
-    
+
     if(i == (regions)){
       Serial.println("final region");
       pointsIn << xIn[0],xIn[i],xIn[1],
@@ -1358,23 +1358,23 @@ void notchCalibrate(float xIn[], float yIn[], float xOut[], float yOut[], int re
 								 yOut[0],yOut[i],yOut[i+1],
 								 1,1,1;
     }
-    
+
     Serial.println("In points:");
     print_mtxf(pointsIn);
     Serial.println("Out points:");
     print_mtxf(pointsOut);
-    
+
 		MatrixXf A(3,3);
-    
+
 		A = pointsOut*pointsIn.inverse();
     //A = pointsOut.colPivHouseholderQr().solve(pointsIn);
-   
+
 
     Serial.println("The transform matrix is:");
     print_mtxf(A);
-    
+
     Serial.println("The affine transform coefficients for this region are:");
-    
+
 		for(int j = 0; j <2;j++){
 			for(int k = 0; k<3;k++){
 				allAffineCoeffs[i-1][j*3+k] = A(j,k);
@@ -1382,7 +1382,7 @@ void notchCalibrate(float xIn[], float yIn[], float xOut[], float yOut[], int re
 				Serial.print(",");
 			}
 		}
-		
+
 		Serial.println();
 		Serial.println("The angle defining this  regions is:");
 		regionAngles[i-1] = atan2f((yIn[i]-yIn[0]),(xIn[i]-xIn[0]));
@@ -1503,7 +1503,7 @@ void print_mtxf(const Eigen::MatrixXf& X){
    nrow = X.rows();
    ncol = X.cols();
    Serial.print("nrow: "); Serial.println(nrow);
-   Serial.print("ncol: "); Serial.println(ncol);       
+   Serial.print("ncol: "); Serial.println(ncol);
    Serial.println();
    for (i=0; i<nrow; i++)
    {
