@@ -649,9 +649,8 @@ void readButtons(){
 	}
 	_lastDPad = dPad; */
 }
-void adjustSnapback(int cStickX, int cStickY, int steps){
+void adjustSnapback(int cStickX, int cStickY){
 	Serial.println("adjusting snapback filtering");
-	for(int i = 0; i < steps; i++) {
 		if(cStickX > 127+50){
 			_gains.xVelDamp = _gains.xVelDamp*1.2599;
 			Serial.print("X filtering increased to:");
@@ -685,11 +684,6 @@ void adjustSnapback(int cStickX, int cStickY, int steps){
 		else if(_gains.yVelDamp < _velDampMin){
 			_gains.yVelDamp = _velDampMin;
 		}
-	}
-
-	Serial.println("Var scale parameters");
-	Serial.println(_varScale);
-	Serial.println(_varOffset);
 
   float xVarDisplay = 3 * (log(_gains.xVelDamp / 0.125) / log(2));
   float yVarDisplay = 3 * (log(_gains.yVelDamp / 0.125) / log(2));
@@ -747,10 +741,6 @@ void setJump(int jumpConfig){
 				_pinXSwappable = _pinX;
 				_pinYSwappable = _pinY;
 	}
-}
-void setADCVar(float* aADCVar,float* bADCVar, float ADCVarSlow){
-	*aADCVar = (_ADCVarFast - ADCVarSlow)/_x6;
-	*bADCVar = ADCVarSlow;
 }
 void readSticks(){
 	 //_ADCScale = _ADCScale*0.999 + _ADCScaleFactor/adc->adc1->analogRead(ADC_INTERNAL_SOURCE::VREF_OUT);
