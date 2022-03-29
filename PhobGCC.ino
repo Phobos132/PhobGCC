@@ -63,30 +63,52 @@ int _pinYSwappable = _pinY;
 int _jumpConfig = 0;
 
 ///// Values used for dealing with snapback in the Kalman Filter, a 6th power relationship between distance to center and ADC/acceleration variance is used, this was arrived at by trial and error
-//const float _accelVarFast = 0.5; //governs the acceleration variation around the edge of the gate, higher value means less filtering
-const float _accelVarFast = 0.1;
-const float _accelVarSlow = 0.01; //governs the acceleration variation with the stick centered, higher value means less filtering
-const float _ADCVarFast = 0.1; //governs the ADC variation around the edge of the gate, higher vaule means more filtering
-const float _ADCVarMax = 10; //maximum allowable value for the ADC variation
-const float _ADCVarMin = 0.1; //minimum allowable value for the ADC variation
-const float _varScale = 0.1;
-const float _varOffset = 0;
-const float _x1 = 100; //maximum stick distance from center
-const float _x6 = _x1*_x1*_x1*_x1*_x1*_x1; //maximum distance to the 6th power
-const float _aAccelVar = (_accelVarFast - _accelVarSlow)/_x6; //first coefficient used to calculate the actual acceleration variation
-const float _bAccelVar = _accelVarSlow; //Second coefficient used to calculate the actual acceleration variation
-const float _damping = 1; //amount of damping used in the stick model
-//ADC variance is used to compensate for differing amounts of snapback, so it is not a constant, can be set by user
-float _ADCVarSlowX = 0.2; //default value
-float _ADCVarSlowY = 0.2; //default value
-float _aADCVarX = (_ADCVarFast - _ADCVarSlowX)/_x6; //first coefficient used to calculate the actual ADC variation
-float _bADCVarX = _ADCVarSlowX; //second coefficient used to calculate the actual ADC variation
-float _aADCVarY = (_ADCVarFast - _ADCVarSlowY)/_x6; //first coefficient used to calculate the actual ADC variation
-float _bADCVarY = _ADCVarSlowY; //second coefficient used to calculate the actual ADC variation
 float _podeThreshX = 0.5;
 float _podeThreshY = 0.5;
 float _velFilterX = 0;
 float _velFilterY = 0;
+
+float _velDampMin = 0.125;
+float _velDampMax = .5;
+
+//New snapback Kalman filter parameters.
+struct FilterGains {
+    //What's the max stick distance from the center
+    float maxStick;
+    //filtered velocity terms
+    //how fast the filtered velocity falls off in the absence of stick movement.
+    //Probably don't touch this.
+    float xVelDecay;//0.1 default for 1.2ms timesteps, larger for bigger timesteps
+    float yVelDecay;
+    //how much the current position disagreement impacts the filtered velocity.
+    //Probably don't touch this.
+    float xVelPosFactor;//0.01 default for 1.2ms timesteps, larger for bigger timesteps
+    float yVelPosFactor;
+    //how much to ignore filtered velocity when computing the new stick position.
+    //DO CHANGE THIS
+    //Higher gives shorter rise times and slower fall times (more pode, less snapback)
+    float xVelDamp;//0.125 default for 1.2ms timesteps, smaller for bigger timesteps
+    float yVelDamp;
+    //speed and accel thresholds below which we try to follow the stick better
+    //These may need tweaking according to how noisy the signal is
+    //If it's noisier, we may need to add additional filtering
+    //If the timesteps are *really small* then it may need to be increased to get
+    //  above the noise floor. Or some combination of filtering and playing with
+    //  the thresholds.
+    float velThresh;//1 default for 1.2ms timesteps, larger for bigger timesteps
+    float accelThresh;//5 default for 1.2ms timesteps, larger for bigger timesteps
+};
+FilterGains _gains {//these values are actually timestep-compensated for in runKalman
+    .maxStick = 100,
+    .xVelDecay = 0.1,
+    .yVelDecay = 0.1,
+    .xVelPosFactor = 0.01,
+    .yVelPosFactor = 0.01,
+    .xVelDamp = 0.125,
+    .yVelDamp = 0.125,
+    .velThresh = 1.0,
+    .accelThresh = 3.0
+};
 
 //////values used to determine how much large of a region will count as being "in a notch"
 
@@ -141,16 +163,16 @@ const int _eepromAPointsX = 0;
 const int _eepromAPointsY = _eepromAPointsX+_noOfCalibrationPoints*_bytesPerFloat;
 const int _eepromCPointsX = _eepromAPointsY+_noOfCalibrationPoints*_bytesPerFloat;
 const int _eepromCPointsY = _eepromCPointsX+_noOfCalibrationPoints*_bytesPerFloat;
-const int _eepromADCVarX = _eepromCPointsY+_noOfCalibrationPoints*_bytesPerFloat;
-const int _eepromADCVarY = _eepromADCVarX+_bytesPerFloat;
-const int _eepromJump = _eepromADCVarY+_bytesPerFloat;
+const int _eepromxVelDamp = _eepromCPointsY+_noOfCalibrationPoints*_bytesPerFloat;
+const int _eepromyVelDamp = _eepromxVelDamp+_bytesPerFloat;
+const int _eepromJump = _eepromyVelDamp+_bytesPerFloat;
 const int _eepromANotchAngles = _eepromJump+_bytesPerFloat;
 const int _eepromCNotchAngles = _eepromANotchAngles+_noOfNotches*_bytesPerFloat;
 
 
 Bounce bounceDr = Bounce();
-Bounce bounceDu = Bounce(); 
-Bounce bounceDl = Bounce(); 
+Bounce bounceDu = Bounce();
+Bounce bounceDl = Bounce();
 Bounce bounceDd = Bounce();
 
 ADC *adc = new ADC();
@@ -158,7 +180,7 @@ ADC *adc = new ADC();
 union Buttons{
 	uint8_t arr[10];
 	struct {
-		
+
 				// byte 0
 		uint8_t A : 1;
 		uint8_t B : 1;
@@ -168,7 +190,7 @@ union Buttons{
 		uint8_t orig : 1;
 		uint8_t errL : 1;
 		uint8_t errS : 1;
-		
+
 		// byte 1
 		uint8_t Dl : 1;
 		uint8_t Dr : 1;
@@ -211,10 +233,21 @@ unsigned int _lastMicros;
 float _dT;
 bool _running = false;
 
+/* old kalman filter state variables
 VectorXf _xState(2);
 VectorXf _yState(2);
 MatrixXf _xP(2,2);
 MatrixXf _yP(2,2);
+*/
+//new kalman filter state variables
+float _xPos;//input of kalman filter
+float _yPos;//input of kalman filter
+float _xPosFilt;//output of kalman filter
+float _yPosFilt;//output of kalman filter
+float _xVel;
+float _yVel;
+float _xVelFilt;
+float _yVelFilt;
 
 
 const char probeResponse[PROBE_LENGTH] = {
@@ -257,7 +290,7 @@ static int _commPoll = 2;
 static int _commWrite = 3;
 
 void setup() {
-	
+
 	//start USB serial
 	Serial.begin(57600);
 	Serial.println("Software version b1.1s0.1 (hopefully Phobos remembered to update this message)");
@@ -265,41 +298,51 @@ void setup() {
 	delay(1000);
 
 	readEEPROM();
-	
+
 	//set some of the unused values in the message response
 	btn.errS = 0;
 	btn.errL = 0;
 	btn.orig = 0;
 	btn.high = 1;
-	
+
 	_currentCalStep = _notCalibrating;
 
-	
+    /*
 	_xState << 0,0;
 	_yState << 0,0;
 	_xP << 1000,0,0,1000;
 	_yP << 1000,0,0,1000;
+    */
+    _xPos = 0;
+    _yPos = 0;
+    _xPosFilt = 0;
+    _yPosFilt = 0;
+    _xVel = 0;
+    _yVel = 0;
+    _xVelFilt = 0;
+    _yVelFilt = 0;
+
 	_lastMicros = micros();
-	
+
 	//analogReference(1);
-	
+
 	adc->adc0->setReference(ADC_REFERENCE::REF_EXT);
 	adc->adc0->setAveraging(8); // set number of averages
   adc->adc0->setResolution(12); // set bits of resolution
   adc->adc0->setConversionSpeed(ADC_CONVERSION_SPEED::MED_SPEED ); // change the conversion speed
   adc->adc0->setSamplingSpeed(ADC_SAMPLING_SPEED::VERY_LOW_SPEED ); // change the sampling speed
-/* 
+/*
   adc->adc1->setAveraging(32); // set number of averages
   adc->adc1->setResolution(16); // set bits of resolution
   adc->adc1->setConversionSpeed(ADC_CONVERSION_SPEED::VERY_LOW_SPEED ); // change the conversion speed
   adc->adc1->setSamplingSpeed(ADC_SAMPLING_SPEED::VERY_LOW_SPEED ); // change the sampling speed
    */
 	setPinModes();
-	
-	
-/* 
+
+
+/*
 	VREF::start();
-		
+
 	double refVoltage = 0;
 	for(int i = 0; i < 512; i++){
 		int value = adc->adc1->analogRead(ADC_INTERNAL_SOURCE::VREF_OUT);
@@ -307,19 +350,19 @@ void setup() {
 		refVoltage += volts;
 	}
 	refVoltage = refVoltage/512.0;
-	
+
 
 	Serial.print("the reference voltage read was:");
 	Serial.println(refVoltage,8);
 	_ADCScale = 1.2/refVoltage;
-	
+
 	adc->adc1->setAveraging(4); // set number of averages
   adc->adc1->setResolution(12); // set bits of resolution
   adc->adc1->setConversionSpeed(ADC_CONVERSION_SPEED::MED_SPEED ); // change the conversion speed
   adc->adc1->setSamplingSpeed(ADC_SAMPLING_SPEED::VERY_LOW_SPEED ); // change the sampling speed
-	
+
 	_ADCScaleFactor = 0.001*1.2*adc->adc1->getMaxValue()/3.3; */
-	
+
 	//_slowBaud = findFreq();
   //serialFreq = 950000;
 	//Serial.print("starting hw serial at freq:");
@@ -352,7 +395,7 @@ void loop() {
 		else{
 			adjustNotch(_currentCalStep,_dT,btn.Y,btn.X,false,_cNotchAngles,_cNotchStatus);
 		}
-			
+
 	}
 	//check if we should be reporting values yet
 	if(btn.B && !_running){
@@ -372,43 +415,37 @@ void readEEPROM(){
 		_jumpConfig = 0;
 	}
 	setJump(_jumpConfig);
-	
-	//get the x-axis snapback filter settings
-	EEPROM.get(_eepromADCVarX, _ADCVarSlowX);
-	Serial.print("the _ADCVarSlowX value from eeprom is:");
-	Serial.println(_ADCVarSlowX);
-	if(std::isnan(_ADCVarSlowX)){
-		_ADCVarSlowX = _ADCVarMin;
-		Serial.print("the _ADCVarSlowX value was adjusted to:");
-		Serial.println(_ADCVarSlowX);
+
+  //get the x-axis velocity dampening
+  EEPROM.get(_eepromxVelDamp, _gains.xVelDamp);
+  Serial.print("the xVelDamp value from eeprom is:");
+  Serial.println(_gains.xVelDamp);
+  if(std::isnan(_gains.xVelDamp)){
+		_gains.xVelDamp = _velDampMin;
+		Serial.print("the xVelDamp value was adjusted to:");
+		Serial.println(_gains.xVelDamp);
 	}
-	if(_ADCVarSlowX >_ADCVarMax){
-		_ADCVarSlowX = _ADCVarMax;
+  if (_gains.xVelDamp > _velDampMax) {
+    _gains.xVelDamp = _velDampMax;
+  } else if (_gains.xVelDamp < _velDampMin) {
+    _gains.xVelDamp = _velDampMin;
+  }
+
+  //get the y-axis velocity dampening
+  EEPROM.get(_eepromyVelDamp, _gains.yVelDamp);
+  Serial.print("the yVelDamp value from eeprom is:");
+  Serial.println(_gains.yVelDamp);
+  if(std::isnan(_gains.yVelDamp)){
+		_gains.yVelDamp = _velDampMin;
+		Serial.print("the yVelDamp value was adjusted to:");
+		Serial.println(_gains.yVelDamp);
 	}
-	else if(_ADCVarSlowX < _ADCVarMin){
-		_ADCVarSlowX = _ADCVarMin;
-	}
-	
-	//get the y-axis snapback fitler settings
-	EEPROM.get(_eepromADCVarY, _ADCVarSlowY);
-	Serial.print("the _ADCVarSlowY value from eeprom is:");
-	Serial.println(_ADCVarSlowY);
-	if(std::isnan(_ADCVarSlowY)){
-		_ADCVarSlowY = _ADCVarMin;
-		Serial.print("the _ADCVarSlowY value was adjusted to:");
-		Serial.println(_ADCVarSlowY);
-	}
-	if(_ADCVarSlowY >_ADCVarMax){
-		_ADCVarSlowY = _ADCVarMax;
-	}
-	else if(_ADCVarSlowY < _ADCVarMin){
-		_ADCVarSlowY = _ADCVarMin;
-	}
-	
-	//set the snapback filtering
-	setADCVar(&_aADCVarX, &_bADCVarX, _ADCVarSlowX);
-	setADCVar(&_aADCVarY, &_bADCVarY, _ADCVarSlowY);
-	
+  if (_gains.yVelDamp > _velDampMax) {
+    _gains.yVelDamp = _velDampMax;
+  } else if (_gains.yVelDamp < _velDampMin) {
+    _gains.yVelDamp = _velDampMin;
+  }
+
 	//get the calibration points collected during the last A stick calibration
 	EEPROM.get(_eepromAPointsX, _tempCalPointsX);
 	EEPROM.get(_eepromAPointsY, _tempCalPointsY);
@@ -419,7 +456,7 @@ void readEEPROM(){
 	Serial.println("A stick linearized");
 	notchCalibrate(_cleanedPointsX,_cleanedPointsY, _notchPointsX, _notchPointsY, _noOfNotches, _aAffineCoeffs, _aBoundaryAngles);
 	//stickCal(_cleanedPointsX,_cleanedPointsY,_aNotchAngles,_aFitCoeffsX,_aFitCoeffsY,_aAffineCoeffs,_aBoundaryAngles);
-	
+
 	//get the calibration points collected during the last A stick calibration
 	EEPROM.get(_eepromCPointsX, _tempCalPointsX);
 	EEPROM.get(_eepromCPointsY, _tempCalPointsY);
@@ -433,26 +470,23 @@ void readEEPROM(){
 }
 void resetDefaults(){
 	Serial.println("RESETTING ALL DEFAULTS");
-	
+
 	_jumpConfig = 0;
 	setJump(_jumpConfig);
 	EEPROM.put(_eepromJump,_jumpConfig);
-	
-	_ADCVarSlowX = _ADCVarMin;
-	EEPROM.put(_eepromADCVarX,_ADCVarSlowX);
-	_ADCVarSlowY = _ADCVarMin;
-	EEPROM.put(_eepromADCVarY,_ADCVarSlowY);
-	
-	setADCVar(&_aADCVarX, &_bADCVarX, _ADCVarSlowX);
-	setADCVar(&_aADCVarY, &_bADCVarY, _ADCVarSlowY);
-	
+
+  _gains.xVelDamp = _velDampMin;
+  EEPROM.put(_eepromxVelDamp,_gains.xVelDamp);
+  _gains.yVelDamp = _velDampMin;
+  EEPROM.put(_eepromyVelDamp,_gains.yVelDamp);
+
 	for(int i = 0; i < _noOfNotches; i++){
 		_aNotchAngles[i] = _notchAngleDefaults[i];
 		_cNotchAngles[i] = _notchAngleDefaults[i];
 	}
 	EEPROM.put(_eepromANotchAngles,_aNotchAngles);
 	EEPROM.put(_eepromCNotchAngles,_cNotchAngles);
-	
+
 	for(int i = 0; i < _noOfCalibrationPoints; i++){
 		_tempCalPointsX[i] = _aDefaultCalPointsX[i];
 		_tempCalPointsY[i] = _aDefaultCalPointsY[i];
@@ -466,24 +500,24 @@ void resetDefaults(){
 	linearizeCal(_cleanedPointsX,_cleanedPointsY,_cleanedPointsX,_cleanedPointsY,_aFitCoeffsX,_aFitCoeffsY);
 	Serial.println("A stick linearized");
 	notchCalibrate(_cleanedPointsX,_cleanedPointsY, _notchPointsX, _notchPointsY, _noOfNotches, _aAffineCoeffs, _aBoundaryAngles);
-	
+
 	for(int i = 0; i < _noOfCalibrationPoints; i++){
 		_tempCalPointsX[i] = _cDefaultCalPointsX[i];
 		_tempCalPointsY[i] = _cDefaultCalPointsY[i];
 	}
 	EEPROM.put(_eepromCPointsX,_tempCalPointsX);
 	EEPROM.put(_eepromCPointsY,_tempCalPointsY);
-	
+
 	Serial.println("C calibration points stored in EEPROM");
 	cleanCalPoints(_tempCalPointsX,_tempCalPointsY,_cNotchAngles,_cleanedPointsX,_cleanedPointsY,_notchPointsX,_notchPointsY);
 	Serial.println("C calibration points cleaned");
 	linearizeCal(_cleanedPointsX,_cleanedPointsY,_cleanedPointsX,_cleanedPointsY,_cFitCoeffsX,_cFitCoeffsY);
 	Serial.println("C stick linearized");
 	notchCalibrate(_cleanedPointsX,_cleanedPointsY, _notchPointsX, _notchPointsY, _noOfNotches, _cAffineCoeffs, _cBoundaryAngles);
-	
+
 }
 void setPinModes(){
-	
+
 	pinMode(_pinL,INPUT_PULLUP);
 	pinMode(_pinR,INPUT_PULLUP);
 	pinMode(_pinDr,INPUT_PULLUP);
@@ -497,7 +531,7 @@ void setPinModes(){
 	pinMode(_pinZ,INPUT_PULLUP);
 	pinMode(_pinS,INPUT_PULLUP);
 
-	
+
 	bounceDr.attach(_pinDr);
 	bounceDr.interval(1000);
 	bounceDu.attach(_pinDu);
@@ -520,13 +554,13 @@ void readButtons(){
 	btn.Dd = !digitalRead(_pinDd);
 	btn.Dl = !digitalRead(_pinDl);
 	btn.Dr = !digitalRead(_pinDr);
-	
+
 	bounceDr.update();
 	bounceDu.update();
 	bounceDl.update();
 	bounceDd.update();
-	
-	
+
+
 	//check the dpad buttons to change the controller settings
 	if(bounceDr.fell()){
 		if(_currentCalStep == -1){
@@ -537,7 +571,7 @@ void readButtons(){
 		else if (!_calAStick){
 			collectCalPoints(_calAStick, _currentCalStep,_tempCalPointsX,_tempCalPointsY);
 			_currentCalStep ++;
-			
+
 			if(_currentCalStep >= _noOfNotches*2){
 				Serial.println("finished collecting the calibration points for the C stick");
 				EEPROM.put(_eepromCPointsX,_tempCalPointsX);
@@ -567,7 +601,7 @@ void readButtons(){
 		else if (_calAStick){
 			collectCalPoints(_calAStick, _currentCalStep,_tempCalPointsX,_tempCalPointsY);
 			_currentCalStep ++;
-			
+
 			if(_currentCalStep >= _noOfNotches*2){
 				Serial.println("finished collecting the calibration points for the A stick");
 				EEPROM.put(_eepromAPointsX,_tempCalPointsX);
@@ -589,9 +623,9 @@ void readButtons(){
 	else if(bounceDd.fell()){
 		readJumpConfig();
 	}
-	/* 
+	/*
 	bool dPad = (btn.Dl || btn.Dr);
-	
+
 	if(dPad && !_lastDPad){
 		_dPadSince = millis();
 		_watchingDPad = true;
@@ -617,68 +651,61 @@ void readButtons(){
 }
 void adjustSnapback(int cStickX, int cStickY){
 	Serial.println("adjusting snapback filtering");
-	if(cStickX > 127+50){
-		_ADCVarSlowX = _ADCVarSlowX*1.1;
-		Serial.print("X filtering increased to:");
-		Serial.println(_ADCVarSlowX);
-	}
-	else if(cStickX < 127-50){
-		_ADCVarSlowX = _ADCVarSlowX*0.90909090909;
-		Serial.print("X filtering decreased to:");
-		Serial.println(_ADCVarSlowX);
-	}
-	if(_ADCVarSlowX >_ADCVarMax){
-		_ADCVarSlowX = _ADCVarMax;
-	}
-	else if(_ADCVarSlowX < _ADCVarMin){
-		_ADCVarSlowX = _ADCVarMin;
-	}
-	
-	if(cStickY > 127+50){
-		_ADCVarSlowY = _ADCVarSlowY*1.1;
-		Serial.print("Y filtering increased to:");
-		Serial.println(_ADCVarSlowY);
-	}
-	else if(cStickY < 127-50){
-		_ADCVarSlowY = _ADCVarSlowY*0.9;
-		Serial.print("Y filtering decreased to:");
-		Serial.println(_ADCVarSlowY);
-	}
-	if(_ADCVarSlowY >_ADCVarMax){
-		_ADCVarSlowY = _ADCVarMax;
-	}
-	else if(_ADCVarSlowY < _ADCVarMin){
-		_ADCVarSlowY = _ADCVarMin;
-	}
-	
-	Serial.println("Var scale parameters");
-	Serial.println(_varScale);
-	Serial.println(_varOffset);
-	
-	float xVarDisplay = 10*(log( _varScale*_ADCVarSlowX + _varOffset)+4.60517);
-	float yVarDisplay = 10*(log( _varScale*_ADCVarSlowY + _varOffset)+4.60517);
-	
+		if(cStickX > 127+50){
+			_gains.xVelDamp = _gains.xVelDamp*1.2599;
+			Serial.print("X filtering increased to:");
+			Serial.println(_gains.xVelDamp);
+		}
+		else if(cStickX < 127-50){
+			_gains.xVelDamp = _gains.xVelDamp*0.7937;
+			Serial.print("X filtering decreased to:");
+			Serial.println(_gains.xVelDamp);
+		}
+		if(_gains.xVelDamp > _velDampMax){
+			_gains.xVelDamp = _velDampMax;
+		}
+		else if(_gains.xVelDamp < _velDampMin){
+			_gains.xVelDamp = _velDampMin;
+		}
+
+		if(cStickY > 127+50){
+			_gains.yVelDamp = _gains.yVelDamp*1.2599;
+			Serial.print("Y filtering increased to:");
+			Serial.println(_gains.yVelDamp);
+		}
+		else if(cStickY < 127-50){
+			_gains.yVelDamp = _gains.yVelDamp*0.7937;
+			Serial.print("Y filtering decreased to:");
+			Serial.println(_gains.yVelDamp);
+		}
+		if(_gains.yVelDamp >_velDampMax){
+			_gains.yVelDamp = _velDampMax;
+		}
+		else if(_gains.yVelDamp < _velDampMin){
+			_gains.yVelDamp = _velDampMin;
+		}
+
+  float xVarDisplay = 3 * (log(_gains.xVelDamp / 0.125) / log(2));
+  float yVarDisplay = 3 * (log(_gains.yVelDamp / 0.125) / log(2));
+
 	Serial.println("Var display results");
 		Serial.println(xVarDisplay);
 	Serial.println(yVarDisplay);
-	
-	
+
+
 	btn.Cx = (uint8_t) (xVarDisplay + 127.5);
 	btn.Cy = (uint8_t) (yVarDisplay + 127.5);
-	
+
 	setPole();
-	
+
 	int startTime = millis();
 	int delta = 0;
 	while(delta < 2000){
 		delta = millis() - startTime;
 	}
-	
-	setADCVar(&_aADCVarX, &_bADCVarX, _ADCVarSlowX);
-	setADCVar(&_aADCVarY, &_bADCVarY, _ADCVarSlowY);
-	
-	EEPROM.put(_eepromADCVarX,_ADCVarSlowX);
-	EEPROM.put(_eepromADCVarY,_ADCVarSlowY);
+
+	EEPROM.put(_eepromxVelDamp,_gains.xVelDamp);
+	EEPROM.put(_eepromyVelDamp,_gains.yVelDamp);
 }
 void readJumpConfig(){
 	Serial.print("setting jump to: ");
@@ -703,7 +730,7 @@ void setJump(int jumpConfig){
 				_pinZSwappable = _pinX;
 				_pinXSwappable = _pinZ;
 				_pinYSwappable = _pinY;
-				break;				
+				break;
 			case 2:
 				_pinZSwappable = _pinY;
 				_pinXSwappable = _pinX;
@@ -714,10 +741,6 @@ void setJump(int jumpConfig){
 				_pinXSwappable = _pinX;
 				_pinYSwappable = _pinY;
 	}
-}
-void setADCVar(float* aADCVar,float* bADCVar, float ADCVarSlow){
-	*aADCVar = (_ADCVarFast - ADCVarSlow)/_x6;
-	*bADCVar = ADCVarSlow;
 }
 void readSticks(){
 	 //_ADCScale = _ADCScale*0.999 + _ADCScaleFactor/adc->adc1->analogRead(ADC_INTERNAL_SOURCE::VREF_OUT);
@@ -732,37 +755,37 @@ void readSticks(){
 	Serial.print(_aStickY);
 	Serial.print(",");
 	Serial.println(_ADCScale); */
-	
-	
+
+
 	//read the L and R sliders
 	btn.La = adc->adc0->analogRead(_pinLa)>>4;
 	btn.Ra = adc->adc0->analogRead(_pinRa)>>4;
-	
+
 	//read the C stick
 	//btn.Cx = adc->adc0->analogRead(pinCx)>>4;
 	//btn.Cy = adc->adc0->analogRead(pinCy)>>4;
 
-	
-	//read the c stick, scale it down so that we don't get huge values when we linearize 
+
+	//read the c stick, scale it down so that we don't get huge values when we linearize
 	_cStickX = (_cStickX + adc->adc0->analogRead(_pinCx)/4096.0)*0.5;
 	_cStickY = (_cStickY + adc->adc0->analogRead(_pinCy)/4096.0)*0.5;
-	
+
 	//create the measurement vector to be used in the kalman filter
-	VectorXf xZ(1);
-	VectorXf yZ(1);
-	
+	float xZ;
+	float yZ;
+
 	//linearize the analog stick inputs by multiplying by the coefficients found during calibration (3rd order fit)
 	//store in the measurement vectors
 	//xZ << (_aFitCoeffsX[0]*(_aStickX*_aStickX*_aStickX) + _aFitCoeffsX[1]*(_aStickX*_aStickX) + _aFitCoeffsX[2]*_aStickX + _aFitCoeffsX[3]);
 	//yZ << (_aFitCoeffsY[0]*(_aStickY*_aStickY*_aStickY) + _aFitCoeffsY[1]*(_aStickY*_aStickY) + _aFitCoeffsY[2]*_aStickY + _aFitCoeffsY[3]);
-	xZ << linearize(_aStickX,_aFitCoeffsX);
-	yZ << linearize(_aStickY,_aFitCoeffsY);
-	
+	xZ = linearize(_aStickX,_aFitCoeffsX);
+	yZ = linearize(_aStickY,_aFitCoeffsY);
+
 	//float posCx = (_cFitCoeffsX[0]*(_cStickX*_cStickX*_cStickX) + _cFitCoeffsX[1]*(_cStickX*_cStickX) + _cFitCoeffsX[2]*_cStickX + _cFitCoeffsX[3]);
 	//float posCy = (_aFitCoeffsY[1]*(_cStickY*_cStickY*_cStickY) + _aFitCoeffsY[1]*(_cStickY*_cStickY) + _aFitCoeffsY[2]*_cStickY + _aFitCoeffsY[3]);
   float posCx = linearize(_cStickX,_cFitCoeffsX);
 	float posCy = linearize(_cStickY,_cFitCoeffsY);
-	
+
 	//Run the kalman filter to eliminate snapback
 	runKalman(xZ,yZ);
 /* 	Serial.println();
@@ -779,23 +802,23 @@ void readSticks(){
 	//float posCx;
 	//float posCy;
 
-	notchRemap(_xState[0],_yState[0], &posAx,  &posAy, _aAffineCoeffs, _aBoundaryAngles,_noOfNotches);
+	notchRemap(_xPosFilt, _yPosFilt, &posAx,  &posAy, _aAffineCoeffs, _aBoundaryAngles,_noOfNotches);
 	notchRemap(posCx,posCy, &posCx,  &posCy, _cAffineCoeffs, _cBoundaryAngles,_noOfNotches);
-	
+
 	float filterWeight = 0.8;
 	_velFilterX = filterWeight*_velFilterX + (1-filterWeight)*(posAx-_aStickLastX)/_dT;
 	_velFilterY = filterWeight*_velFilterY + (1-filterWeight)*(posAy-_aStickLastY)/_dT;
 	//assign the remapped values to the button struct
 	if(_running){
-		
+
 /* 		if((_velFilterX < _podeThreshX) && (_velFilterX > -_podeThreshX)){
 			btn.Ax = (uint8_t) (posAx+127.5);
 		}
-		
+
 		if((_velFilterY < _podeThreshY) && (_velFilterY > -_podeThreshY)){
 			btn.Ay = (uint8_t) (posAy+127.5);
 		} */
-	
+
 		btn.Ax = (uint8_t) (posAx+127.5);
 		btn.Ay = (uint8_t) (posAy+127.5);
 		btn.Cx = (uint8_t) (posCx+127.5);
@@ -808,10 +831,10 @@ void readSticks(){
 		btn.Cx = 127;
 		btn.Cy = 127;
 	}
-	
+
 	_aStickLastX = posAx;
 	_aStickLastY = posAy;
-	
+
 	//Serial.println();
 	//Serial.print(_dT/16.7);
 	//Serial.print(",");
@@ -836,12 +859,12 @@ void readSticks(){
 void notchRemap(float xIn, float yIn, float* xOut, float* yOut, float affineCoeffs[][6], float regionAngles[], int regions){
 	//determine the angle between the x unit vector and the current position vector
 	float angle = atan2f(yIn,xIn);
-	
+
 	//unwrap the angle based on the first region boundary
 	if(angle < regionAngles[0]){
 		angle += M_PI*2;
 	}
-	
+
 	//go through the region boundaries from lowest angle to highest, checking if the current position vector is in that region
 	//if the region is not found then it must be between the first and the last boundary, ie the last region
 	//we check GATE_REGIONS*2 because each notch has its own very small region we use to make notch values more consistent
@@ -857,7 +880,7 @@ void notchRemap(float xIn, float yIn, float* xOut, float* yOut, float affineCoef
 	//Apply the affine transformation using the coefficients found during calibration
 	*xOut = affineCoeffs[region][0]*xIn + affineCoeffs[region][1]*yIn + affineCoeffs[region][2];
 	*yOut = affineCoeffs[region][3]*xIn + affineCoeffs[region][4]*yIn + affineCoeffs[region][5];
-	
+
 	if((abs(*xOut)<5) && (abs(*yOut)>95)){
 		*xOut = 0;
 	}
@@ -956,13 +979,13 @@ void communicate(){
 					break;
 				}
 			}
-		
+
 		//Serial.println(cmdByte,HEX);
 		UART1_BDH = _fastBDH;
 		UART1_BDL = _fastBDL;
 		UART1_C4 = _fastC4;
 		UART1_C2 &= ~UART_C2_RE;
-		
+
 		switch(cmdByte){
 		case 0x00:
 			//digitalWriteFast(12,LOW);
@@ -996,13 +1019,13 @@ void communicate(){
 			digitalWriteFast(12,LOW);
 			Serial.println("error");
 			Serial.println(_bitCount,DEC);
-			
+
 			UART1_BDH = _slowBDH;
 			UART1_BDL = _slowBDL;
 			UART1_C4 = _slowC4;
 			UART1_C2 |= UART_C2_RE;
 			Serial2.clear();
-			
+
 			uint8_t thisbyte = 0;
 		  while(thisbyte != 0xFF){
 				while(!Serial2.available());
@@ -1032,12 +1055,12 @@ void communicate(){
 	else if(_commStatus == _commWrite){
 		//digitalWriteFast(12,LOW);
  		while(_writeQueue > _bitCount){}
-		
+
 		UART1_BDH = _slowBDH;
 		UART1_BDL = _slowBDL;
 		UART1_C4 = _slowC4;
 		UART1_C2 |= UART_C2_RE;
-		
+
 		_bitCount = 0;
 		_commStatus = _commIdle;
 		_writeQueue = 0;
@@ -1054,41 +1077,41 @@ void communicate(){
 	take the x and y coordinates and notch angles collected during the calibration procedure, and generate the cleaned x an y stick coordinates and the corresponding x and y notch coordinates
 *******************/
 void cleanCalPoints(float calPointsX[], float  calPointsY[], float notchAngles[], float cleanedPointsX[], float cleanedPointsY[], float notchPointsX[], float notchPointsY[]){
-	
+
 	Serial.println("The raw calibration points (x,y) are:");
 	for(int i = 0; i< _noOfCalibrationPoints; i++){
 		Serial.print(calPointsX[i]);
 		Serial.print(",");
 		Serial.println(calPointsY[i]);
 	}
-	
+
 	Serial.println("The notch angles are:");
 	for(int i = 0; i< _noOfNotches; i++){
 		Serial.println(notchAngles[i]);
 	}
-	
+
 	notchPointsX[0] = 0;
 	notchPointsY[0] = 0;
 	cleanedPointsX[0] = 0;
 	cleanedPointsY[0] = 0;
-	
+
 	for(int i = 0; i < _noOfNotches; i++){
 			//add the origin values toe the first x,y point
 			cleanedPointsX[0] += calPointsX[i*2];
 			cleanedPointsY[0] += calPointsY[i*2];
-			
+
 			//set the notch point
 			cleanedPointsX[i+1] = calPointsX[i*2+1];
 			cleanedPointsY[i+1] = calPointsY[i*2+1];
-			
+
 			calcStickValues(notchAngles[i], notchPointsX+i+1, notchPointsY+i+1);
 		}
-		
+
 
 		//divide by the total number of calibration steps/2 to get the average origin value
 		cleanedPointsX[0] = cleanedPointsX[0]/((float)_noOfNotches);
 		cleanedPointsY[0] = cleanedPointsY[0]/((float)_noOfNotches);
-		
+
 	for(int i = 0; i < _noOfNotches; i++){
 		float deltaX = cleanedPointsX[i+1] - cleanedPointsX[0];
 		float deltaY = cleanedPointsY[i+1] - cleanedPointsY[0];
@@ -1096,25 +1119,25 @@ void cleanCalPoints(float calPointsX[], float  calPointsY[], float notchAngles[]
 		if(mag < 0.02){
 			int prevIndex = (i-1+_noOfNotches) % _noOfNotches+1;
 			int nextIndex = (i+1) % _noOfNotches+1;
-			
+
 			cleanedPointsX[i+1] = (cleanedPointsX[prevIndex] + cleanedPointsX[nextIndex])/2.0;
 			cleanedPointsY[i+1] = (cleanedPointsY[prevIndex] + cleanedPointsY[nextIndex])/2.0;
-			
+
 			notchPointsX[i+1] = (notchPointsX[prevIndex] + notchPointsX[nextIndex])/2.0;
 			notchPointsY[i+1] = (notchPointsY[prevIndex] + notchPointsY[nextIndex])/2.0;
-			
+
 			Serial.print("no input was found for notch: ");
 			Serial.println(i+1);
 		}
 	}
-	
+
 	Serial.println("The cleaned calibration points are:");
 	for(int i = 0; i< (_noOfNotches+1); i++){
 		Serial.print(cleanedPointsX[i]);
 		Serial.print(",");
 		Serial.println(cleanedPointsY[i]);
 	}
-	
+
 	Serial.println("The corresponding notch points are:");
 	for(int i = 0; i< (_noOfNotches+1); i++){
 		Serial.print(notchPointsX[i]);
@@ -1122,7 +1145,7 @@ void cleanCalPoints(float calPointsX[], float  calPointsY[], float notchAngles[]
 		Serial.println(notchPointsY[i]);
 	}
 }
-void adjustNotch(int currentStep, int loopDelta, bool CW, int CCW, bool calibratingAStick, float notchAngles[], int notchStatus[]){
+void adjustNotch(int currentStep, float loopDelta, bool CW, int CCW, bool calibratingAStick, float notchAngles[], int notchStatus[]){
 	float X = 0;
 	float Y = 0;
 	//don't run on center steps
@@ -1155,12 +1178,12 @@ void adjustNotch(int currentStep, int loopDelta, bool CW, int CCW, bool calibrat
 	}
 }
 void collectCalPoints(bool aStick, int currentStep, float calPointsX[], float calPointsY[]){
-	
+
 	Serial.print("Collecting cal point for step: ");
 	Serial.println(currentStep);
 	float X = 0;
 	float Y = 0;
-	
+
 	for(int i = 0; i < 128; i++){
 		if(aStick){
 			//_ADCScale = _ADCScale*0.999 + _ADCScaleFactor/adc->adc1->analogRead(ADC_INTERNAL_SOURCE::VREF_OUT);
@@ -1174,10 +1197,10 @@ void collectCalPoints(bool aStick, int currentStep, float calPointsX[], float ca
 			Y += adc->adc0->analogRead(_pinCy)/4096.0;
 		}
 	}
-	
+
 	calPointsX[currentStep] = X/128.0;
 	calPointsY[currentStep] = Y/128.0;
-	
+
 	Serial.println("The collected coordinates are: ");
 	Serial.println(calPointsX[currentStep],8);
 	Serial.println(calPointsY[currentStep],8);
@@ -1192,75 +1215,75 @@ void collectCalPoints(bool aStick, int currentStep, float calPointsX[], float ca
 *******************/
 void linearizeCal(float inX[],float inY[],float outX[], float outY[], float fitCoeffsX[],float fitCoeffsY[]){
 	Serial.println("beginning linearization");
-	
+
 	//do the curve fit first
 	//generate all the notched/not notched specific cstick values we will need
-	
+
 	double fitPointsX[5];
 	double fitPointsY[5];
-	
+
 	fitPointsX[0] = inX[8+1];
 	fitPointsX[1] = (inX[6+1] + inX[10+1])/2.0;
 	fitPointsX[2] = inX[0];
 	fitPointsX[3] = (inX[2+1] + inX[14+1])/2.0;
 	fitPointsX[4] = inX[0+1];
-	
+
 	fitPointsY[0] = inY[12+1];
 	fitPointsY[1] = (inY[10+1] + inY[14+1])/2.0;
 	fitPointsY[2] = inY[0];
 	fitPointsY[3] = (inY[6+1] + inY[2+1])/2.0;
 	fitPointsY[4] = inY[4+1];
-	
-	
+
+
 	//////determine the coefficients needed to linearize the stick
 	//create the expected output, what we want our curve to be fit too
 	//this is hard coded because it doesn't depend on the notch adjustments
 	double x_output[5] = {27.5,53.2537879754,127.5,201.7462120246,227.5};
 	double y_output[5] = {27.5,53.2537879754,127.5,201.7462120246,227.5};
-	
+
 	Serial.println("The fit input points are (x,y):");
 	for(int i = 0; i < 5; i++){
 		Serial.print(fitPointsX[i],8);
 		Serial.print(",");
 		Serial.println(fitPointsY[i],8);
 	}
-	
+
 	Serial.println("The corresponding fit output points are (x,y):");
 	for(int i = 0; i < 5; i++){
 		Serial.print(x_output[i]);
 		Serial.print(",");
 		Serial.println(y_output[i]);
 	}
-	
+
 	//perform the curve fit, order is 3
 	double tempCoeffsX[_fitOrder+1];
 	double tempCoeffsY[_fitOrder+1];
 
 	fitCurve(_fitOrder, 5, fitPointsX, x_output, _fitOrder+1,  tempCoeffsX);
 	fitCurve(_fitOrder, 5, fitPointsY, y_output, _fitOrder+1, tempCoeffsY);
-	
+
 		//write these coefficients to the array that was passed in, this is our first output
 	for(int i = 0; i < (_fitOrder+1); i++){
 		fitCoeffsX[i] = tempCoeffsX[i];
 		fitCoeffsY[i] = tempCoeffsY[i];
 	}
-	
+
 	//we will now take out the offset, making the range -100 to 100 isntead of 28 to 228
 	//calculate the offset
 	float xZeroError = linearize((float)fitPointsX[2],fitCoeffsX);
 	float yZeroError = linearize((float)fitPointsY[2],fitCoeffsY);
-	
+
 	//Adjust the fit so that the stick zero position is 0
 	fitCoeffsX[3] = fitCoeffsX[3] - xZeroError;
 	fitCoeffsY[3] = fitCoeffsY[3] - yZeroError;
-	
+
 	Serial.println("The fit coefficients are  are (x,y):");
 	for(int i = 0; i < 4; i++){
 		Serial.print(fitCoeffsX[i]);
 		Serial.print(",");
 		Serial.println(fitCoeffsY[i]);
 	}
-	
+
 	Serial.println("The linearized points are:");
 	for(int i = 0; i <= _noOfNotches; i++){
 		outX[i] = linearize(inX[i],fitCoeffsX);
@@ -1269,18 +1292,18 @@ void linearizeCal(float inX[],float inY[],float outX[], float outY[], float fitC
 		Serial.print(",");
 		Serial.println(outY[i],8);
 	}
-	
+
 }
 
 void notchCalibrate(float xIn[], float yIn[], float xOut[], float yOut[], int regions, float allAffineCoeffs[][6], float regionAngles[]){
 	for(int i = 1; i <= regions; i++){
       Serial.print("calibrating region: ");
       Serial.println(i);
-      
+
 		MatrixXf pointsIn(3,3);
 
     MatrixXf pointsOut(3,3);
-    
+
     if(i == (regions)){
       Serial.println("final region");
       pointsIn << xIn[0],xIn[i],xIn[1],
@@ -1298,23 +1321,23 @@ void notchCalibrate(float xIn[], float yIn[], float xOut[], float yOut[], int re
 								 yOut[0],yOut[i],yOut[i+1],
 								 1,1,1;
     }
-    
+
     Serial.println("In points:");
     print_mtxf(pointsIn);
     Serial.println("Out points:");
     print_mtxf(pointsOut);
-    
+
 		MatrixXf A(3,3);
-    
+
 		A = pointsOut*pointsIn.inverse();
     //A = pointsOut.colPivHouseholderQr().solve(pointsIn);
-   
+
 
     Serial.println("The transform matrix is:");
     print_mtxf(A);
-    
+
     Serial.println("The affine transform coefficients for this region are:");
-    
+
 		for(int j = 0; j <2;j++){
 			for(int k = 0; k<3;k++){
 				allAffineCoeffs[i-1][j*3+k] = A(j,k);
@@ -1322,7 +1345,7 @@ void notchCalibrate(float xIn[], float yIn[], float xOut[], float yOut[], int re
 				Serial.print(",");
 			}
 		}
-		
+
 		Serial.println();
 		Serial.println("The angle defining this  regions is:");
 		regionAngles[i-1] = atan2f((yIn[i]-yIn[0]),(xIn[i]-xIn[0]));
@@ -1336,112 +1359,114 @@ void notchCalibrate(float xIn[], float yIn[], float xOut[], float yOut[], int re
 float linearize(float point, float coefficients[]){
 	return (coefficients[0]*(point*point*point) + coefficients[1]*(point*point) + coefficients[2]*point + coefficients[3]);
 }
-void runKalman(VectorXf& xZ,VectorXf& yZ){
+void runKalman(const float xZ,const float yZ){
 	//Serial.println("Running Kalman");
-	
-	
+
 	//get the time delta since the kalman filter was last run
 	unsigned int thisMicros = micros();
 	_dT = (thisMicros-_lastMicros)/1000.0;
 	_lastMicros = thisMicros;
 	//Serial.print("loop time: ");
 	//Serial.println(_dT);
-	
-	//generate the state transition matrix, note the damping term
-	MatrixXf Fmat(2,2);
-	Fmat << 1,_dT-_damping/2*_dT*_dT,
-			 0,1-_damping*_dT;
 
-	//generate the acceleration variance for this filtering step, the further from the origin the higher it will be
-  float R2 = xZ[0]*xZ[0]+yZ[0]*yZ[0];
-  if(R2 > 10000){
-    R2 = 10000;
-  }
-  float accelVar = _aAccelVar*(R2*R2*R2) + _bAccelVar;
-	
-	MatrixXf Q(2,2);
-  //Serial.print(accelVar,10);
-  //Serial.print(',');
-	Q << (_dT*_dT*_dT*_dT/4), (_dT*_dT*_dT/2),
-			 (_dT*_dT*_dT/2), (_dT*_dT);
-	Q = Q * accelVar;
-	
-	MatrixXf sharedH(1,2);
-	sharedH << 1,0;
-	
-	//Serial.println('H');
-	//print_mtxf(H)
-	
-	MatrixXf xR(1,1);
-	MatrixXf yR(1,1);
-	
-	//generate the measurement variance (i've called it ADC var) for this time step, the further from the origin the lower it will be
-  xR << _aADCVarX*(R2*R2*R2) + _bADCVarX;
-	yR << _aADCVarY*(R2*R2*R2) + _bADCVarY;
+    //set up gains according to the time delta.
+    //The reference time delta used to tune was 1.2 ms.
+    FilterGains g;
+    const float timeFactor = _dT / 1.2;
+    const float timeDivisor = 1.2 / _dT;
+    g.maxStick      = _gains.maxStick*_gains.maxStick;//we actually use the square
+    g.xVelDecay     = _gains.xVelDecay      * timeFactor;
+    g.yVelDecay     = _gains.yVelDecay      * timeFactor;
+    g.xVelPosFactor = _gains.xVelPosFactor  * timeFactor;
+    g.yVelPosFactor = _gains.yVelPosFactor  * timeFactor;
+    g.xVelDamp      = _gains.xVelDamp       * timeDivisor;
+    g.yVelDamp      = _gains.yVelDamp       * timeDivisor;
+    g.velThresh     = 1/(_gains.velThresh   * timeFactor);//slight optimization by using the inverse
+    g.accelThresh   = 1/(_gains.accelThresh * timeFactor);
+    g.velThresh     = g.velThresh*g.velThresh;//square it because it's used squared
+    g.accelThresh   = g.accelThresh*g.accelThresh;
 
-  //Serial.println(xR(0,0),10);
-	//_dT = micros()-lastMicros;
-	//Serial.println(_dT);
-	//print_mtxf(_xP);
-	
-	//run the prediciton step for the x-axis
-	kPredict(_xState,Fmat,_xP,Q);
-	//_dT = micros()-lastMicros;
-	//Serial.println(_dT);
-	
-	//run the prediciton step for the y-axis
-	kPredict(_yState,Fmat,_yP,Q);
-	//_dT = micros()-lastMicros;
-	//Serial.println(_dT);
-	
-	//run the update step for the x-axis
-	kUpdate(_xState,xZ,_xP,sharedH,xR);
-	//_dT = micros()-lastMicros;
-	//Serial.println(_dT);
-	
-	//run the update step for the y-axis
-	kUpdate(_yState,yZ,_yP,sharedH,yR);
-	//_dT = micros()-lastMicros;
-	//Serial.println(_dT);
+    //save previous values of state
+    //float _xPos;//input of kalman filter
+    //float _yPos;//input of kalman filter
+    const float oldXPos = _xPos;
+    const float oldYPos = _yPos;
+    //float _xPosFilt;//output of kalman filter
+    //float _yPosFilt;//output of kalman filter
+    const float oldXPosFilt = _xPosFilt;
+    const float oldYPosFilt = _yPosFilt;
+    //float _xVel;
+    //float _yVel;
+    const float oldXVel = _xVel;
+    const float oldYVel = _yVel;
+    //float _xVelFilt;
+    //float _yVelFilt;
+    const float oldXVelFilt = _xVelFilt;
+    const float oldYVelFilt = _yVelFilt;
+
+    //compute new (more trivial) state
+    _xPos = xZ;
+    _yPos = yZ;
+    _xVel = _xPos - oldXPos;
+    _yVel = _yPos - oldYPos;
+    const float xVelSmooth = 0.5*(_xVel + oldXVel);
+    const float yVelSmooth = 0.5*(_yVel + oldYVel);
+    const float xAccel = _xVel - oldXVel;
+    const float yAccel = _yVel - oldYVel;
+    const float oldXPosDiff = oldXPos - oldXPosFilt;
+    const float oldYPosDiff = oldYPos - oldYPosFilt;
+
+    //compute stick position exponents for weights
+    const float stickDistance2 = min(g.maxStick, _xPos*_xPos + _yPos*_yPos)/g.maxStick;//0-1
+    const float stickDistance6 = stickDistance2*stickDistance2*stickDistance2;
+
+    //the current velocity weight for the filtered velocity is the stick r^2
+    const float velWeight1 = stickDistance2;
+    const float velWeight2 = 1-velWeight1;
+
+    //modified velocity to feed into our kalman filter.
+    //We don't actually want an accurate model of the velocity, we want to suppress snapback without adding delay
+    //term 1: weight current velocity according to r^2
+    //term 2: the previous filtered velocity, weighted the opposite and also set to decay
+    //term 3: a corrective factor based on the disagreement between real and filtered position
+    _xVelFilt = velWeight1*_xVel + (1-g.xVelDecay)*velWeight2*oldXVelFilt + g.xVelPosFactor*oldXPosDiff;
+    _yVelFilt = velWeight1*_yVel + (1-g.yVelDecay)*velWeight2*oldYVelFilt + g.yVelPosFactor*oldYPosDiff;
+
+    //the current position weight used for the filtered position is whatever is larger of
+    //  a) 1 minus the sum of the squares of
+    //    1) the smoothed velocity divided by the velocity threshold
+    //    2) the acceleration divided by the accel threshold
+    //  b) stick r^6
+    //When the stick is moving slowly, we want to weight it highly, in order to achieve
+    //  quick control for inputs such as tilts. We lock out using both velocity and
+    //  acceleration in order to rule out snapback.
+    //When the stick is near the rim, we also want instant response, and we know snapback
+    //  doesn't reach the rim.
+    const float xPosWeightVelAcc = 1 - min(1, xVelSmooth*xVelSmooth*g.velThresh + xAccel*xAccel*g.accelThresh);
+    const float xPosWeight1 = max(xPosWeightVelAcc, stickDistance6);
+    const float xPosWeight2 = 1-xPosWeight1;
+    const float yPosWeightVelAcc = 1 - min(1, yVelSmooth*yVelSmooth*g.velThresh + yAccel*yAccel*g.accelThresh);
+    const float yPosWeight1 = max(yPosWeightVelAcc, stickDistance6);
+    const float yPosWeight2 = 1-yPosWeight1;
+
+    //In calculating the filtered stick position, we have the following components
+    //term 1: current position, weighted according to the above weight
+    //term 2: a predicted position based on the filtered velocity and previous filtered position,
+    //  with the filtered velocity damped, and the overall term weighted inverse of the previous term
+    //term 3: the integral error correction term
+    _xPosFilt = xPosWeight1*_xPos +
+                xPosWeight2*(oldXPosFilt + (1-g.xVelDamp)*_xVelFilt);
+    _yPosFilt = yPosWeight1*_yPos +
+                yPosWeight2*(oldYPosFilt + (1-g.yVelDamp)*_yVelFilt);
 }
-void kPredict(VectorXf& X, MatrixXf& F, MatrixXf& P, MatrixXf& Q){
-	//Serial.println("Predicting Kalman");
-	
-	X = F*X;
-	P = F*P*F.transpose() + Q;
-	
-}
-void kUpdate(VectorXf& X, VectorXf& Z, MatrixXf& P, MatrixXf& H,  MatrixXf& R){
-//void kUpdate(VectorXf& X, float measX, MatrixXf& P, MatrixXf& H,  MatrixXf& R){
-	//Serial.println("Updating Kalman");
-	
-	int sizeState = X.size();
-	//int sizeMeas = Z.size();
-	MatrixXf A(1,2);
-	A = P*H.transpose();
-	MatrixXf B(1,1);
-	B = H*A+R;
-	MatrixXf K(2,1);
-	K = A*B.inverse();
-	//print_mtxf(K);
-	//K = MatrixXf::Identity(sizeState,sizeState);
-	MatrixXf C(1,1); 
-	//C = Z - H*X;
-	X = X + K*(Z - H*X);
-	//X = X + K*(measX-X[0]);
-	
-	MatrixXf D = MatrixXf::Identity(sizeState,sizeState) - K*H;
-	P = D*P*D.transpose() + K*R*K.transpose();
-	
-	//print_mtxf(P);
-}
+
 
 void print_mtxf(const Eigen::MatrixXf& X){
    int i, j, nrow, ncol;
    nrow = X.rows();
    ncol = X.cols();
    Serial.print("nrow: "); Serial.println(nrow);
-   Serial.print("ncol: "); Serial.println(ncol);       
+   Serial.print("ncol: "); Serial.println(ncol);
    Serial.println();
    for (i=0; i<nrow; i++)
    {
