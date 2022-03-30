@@ -404,6 +404,10 @@ void commInt() {
 				Serial.println();
 			}
 			
+			//wait for the stop bit to be received and clear it
+			while(!Serial2.available()){}
+				Serial2.clear();
+			
 			//clear any remaining data, set the waiting flag to false, and set the serial port to high speed to be ready to send our poll response
 			Serial2.clear();
 			_waiting = false;
