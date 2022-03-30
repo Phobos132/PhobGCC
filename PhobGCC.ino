@@ -334,9 +334,9 @@ void loop() {
 	//read the controllers buttons
 	readButtons();
 	//read the analog inputs
-	digitalWriteFast(13,HIGH);
+	//digitalWriteFast(13,HIGH);
 	readSticks();
-	digitalWriteFast(13,LOW);
+	//digitalWriteFast(13,LOW);
 	//check to see if we are calibrating
 	if(_currentCalStep >= 0){
 		if(_calAStick){
@@ -368,15 +368,17 @@ void commInt() {
 		if(_writing){
 			//Set pin 13 (LED) low for debugging, if it flickers it means the teensy got stuck here somewhere
 			digitalWriteFast(13,LOW);
+			//wait for the stop bit to be read
 			
+			while(Serial2.available() <= _bitQueue){}
 			//check to see if we just reset reportCount to 0, if we have then we will report the data we just sent over to the PC over serial
 			if(_reportCount == 0){
 				char myBuffer[128];
-				for(int i = 0; i < _bitQueue; i++){
+				for(int i = 0; i < _bitQueue+1; i++){
 					myBuffer[i] = (Serial2.read() > 0b11110000)+48;
 				}
 				Serial.print("Sent: ");
-				Serial.write(myBuffer,_bitQueue);
+				Serial.write(myBuffer,_bitQueue+1);
 				Serial.println();
 			}
 			
@@ -392,21 +394,23 @@ void commInt() {
 		//if we are not writing, check to see if we were waiting for a poll command to finish
 		//if we are, we need to clear the data and send our poll response
 		else if(_waiting){
-			
+			digitalWriteFast(13,LOW);
+			//wait for the stop bit to be received
+			while(Serial2.available() <= _bitQueue){}
+			digitalWriteFast(13,HIGH);
 			//check to see if we just reset reportCount to 0, if we have then we will report the remainder of the poll response to the PC over serial
 			if(_reportCount == 0){
 				Serial.print("Poll: ");
-				 char myBuffer[128];
-				for(int i = 0; i < _bitQueue; i++){
+				char myBuffer[128];
+				for(int i = 0; i < _bitQueue+1; i++){
 					myBuffer[i] = (Serial2.read() > 0b11110000)+48;
 				}
-				Serial.write(myBuffer,_bitQueue);
+				Serial.write(myBuffer,_bitQueue+1);
 				Serial.println();
 			}
 			
-			//wait for the stop bit to be received and clear it
-			while(!Serial2.available()){}
-				Serial2.clear();
+			//clear any remaining data
+			Serial2.clear();
 			
 			//clear any remaining data, set the waiting flag to false, and set the serial port to high speed to be ready to send our poll response
 			Serial2.clear();
