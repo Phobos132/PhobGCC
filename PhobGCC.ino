@@ -194,7 +194,7 @@ MatrixXf _yP(2,2);
 ////Serial settings
 bool _writing = false;
 bool _waiting = false;
-int _bitQueue = 0;
+int _bitQueue = 8;
 int _waitQueue = 0;
 int _writeQueue = 0;
 uint8_t _cmdByte = 0;
@@ -204,6 +204,8 @@ const int _probeLength = 25;
 const int _originLength = 81;
 const int _pollLength = 65;
 static char _serialBuffer[128];
+int _errorCount = 0;
+int _reportCount = 0;
 
 const char _probeResponse[_probeLength] = {
 	0,0,0,0, 1,0,0,1,
@@ -356,173 +358,171 @@ void loop() {
 	//}
 
 }
+
+//commInt() will be called on every rising edge of a pulse that we receive
+//we will check if we have the expected amount of serial data yet, if we do we will do something with it, if we don't we will do nothing and wait for the next rising edge to check again
 void commInt() {
-	//digitalWriteFast(13,LOW);
-	Serial.print(_bitQueue);
-	Serial.print(',');
-	Serial.println(Serial2.available());
+	//check to see if we have the expected amount of data yet
 	if(Serial2.available() >= _bitQueue){
+		//check to see if we have been writing data, if have then we need to clear it and set the serial port back to low speed to be ready to receive the next command
 		if(_writing){
+			//Set pin 13 (LED) low for debugging, if it flickers it means the teensy got stuck here somewhere
 			digitalWriteFast(13,LOW);
+			
+			//check to see if we just reset reportCount to 0, if we have then we will report the data we just sent over to the PC over serial
+			if(_reportCount == 0){
+				char myBuffer[128];
+				for(int i = 0; i < _bitQueue; i++){
+					myBuffer[i] = (Serial2.read() > 0b11110000)+48;
+				}
+				Serial.print("Sent: ");
+				Serial.write(myBuffer,_bitQueue);
+				Serial.println();
+			}
+			
+			//flush and clear the any remaining data just to be sure
 			Serial2.flush();
 			Serial2.clear();
+			
+			//turn the writing flag off, set the serial port to low speed, and set our expected bit queue to 8 to be ready to receive our next command
 			_writing = false;
 			Serial2.begin(2000000);
 			_bitQueue = 8;
 		}
+		//if we are not writing, check to see if we were waiting for a poll command to finish
+		//if we are, we need to clear the data and send our poll response
 		else if(_waiting){
+			
+			//check to see if we just reset reportCount to 0, if we have then we will report the remainder of the poll response to the PC over serial
+			if(_reportCount == 0){
+				Serial.print("Poll: ");
+				 char myBuffer[128];
+				for(int i = 0; i < _bitQueue; i++){
+					myBuffer[i] = (Serial2.read() > 0b11110000)+48;
+				}
+				Serial.write(myBuffer,_bitQueue);
+				Serial.println();
+			}
+			
+			//clear any remaining data, set the waiting flag to false, and set the serial port to high speed to be ready to send our poll response
 			Serial2.clear();
 			_waiting = false;
 			Serial2.begin(2500000);
+			
+			//set the writing flag to true, set our expected bit queue to the poll response length -1 (to account for the stop bit)
 			_writing = true;
 			_bitQueue = _pollLength-1;
+			
+			//write the poll response
 			for(int i = 0; i<_pollLength; i++){
 				if(_pollResponse[i]){
+					//short low period = 1
 					Serial2.write(0b11111100);
 				}
 				else{
+					//long low period = 0
 					Serial2.write(0b11000000);
 				}
 			}
 		}
 		else{
-			if(Serial2.available() >= _bitQueue){
-				digitalWriteFast(13,LOW);
-				_cmdByte = 0;
-				for(int i = 0; i<8; i++){
-					int bitval = Serial2.read();
-					_cmdByte = (_cmdByte<<1) | (bitval > 0b11110000);
-					Serial.print(bitval,BIN);
-					Serial.print(',');
-				}
-				Serial.println();
-				Serial.println(_cmdByte,HEX);
-				if(_cmdByte == 0b00000000){
-					
-					Serial2.read();
-					Serial2.begin(2500000);
-					_writing = true;
-					_bitQueue = _probeLength-1;
-					for(int i = 0; i<_probeLength; i++){
-						if(_probeResponse[i]){
-							Serial2.write(0b11111100);
-						}
-						else{
-							Serial2.write(0b11000000);
-						}
-					}
-				}
-				else if(_cmdByte == 0b01000001){
-					Serial2.read();
-					Serial2.begin(2500000);
-					_writing = true;
-					_bitQueue = _originLength-1;
-					for(int i = 0; i<_originLength; i++){
-						if(_originResponse[i]){
-							Serial2.write(0b11111100);
-						}
-						else{
-							Serial2.write(0b11000000);
-						}
-					}
-				}
-				else if(_cmdByte == 0b01000000){
-					_waiting = true;
-					_bitQueue = 16;
-				}
-				
-				//digitalWriteFast(13,LOW);
+			//We are not writing a response or waiting for a poll response to finish, so we must have received the start of a new command
+			//Set pin 13 (LED) low for debugging, if it flickers it means the teensy got stuck here somewhere
+			digitalWriteFast(13,LOW);
+			
+			//increment the report count, will be used to only send a report every 64 commands to not overload the PC serial connection
+			_reportCount++;
+			if(_reportCount > 64){
+				_reportCount = 0;
 			}
-		}
-	}
-	digitalWriteFast(13,HIGH);
-}
-void serialEvent2NOTUSED() {
-  if(_writing){
-		//digitalWriteFast(12,HIGH);
-		
-    while(Serial2.available()){
-			Serial2.read();
-			_writeQueue--;
-    }
-		
-		if(_writeQueue <=0){
-			_writing = false;
-			Serial2.begin(_slowBaud);
-		}
-		
-		//digitalWriteFast(12,LOW);
-  }
-	else if(_waiting){
-		while(Serial2.available()){
-			Serial2.read();
-			_waitQueue--;
-    }
-		if(_waitQueue<=0){
-			_waiting = false;
-			Serial2.begin(_fastBaud);
-			_writing = true;
-			_writeQueue = _pollLength;
-			for(int i = 0; i<_pollLength; i++){
-				//Serial.print(_pollResponse[i],BIN);
-				if(_pollResponse[i]){
-					Serial2.write(0b11111100);
-				}
-				else{
-					Serial2.write(0b11000000);
-				}
-			}
-			//Serial.println();
-		}
-	}
-  else{
-    if(Serial2.available()>8){
-      //digitalWriteFast(12,HIGH);
+			
+			//clear the command byte of previous data
 			_cmdByte = 0;
-      for(int i = 0; i<8; i++){
-				int bitval = Serial2.read();
-				_cmdByte = (_cmdByte<<1) | (bitval > 0b11110000);
-        //Serial.print(bitval,BIN);
-				//Serial.print(',');
-      }
-			//Serial.println();
-			//Serial.println(_cmdByte,HEX);
+			
+			//write the new data from the serial buffer into the command byte
+			for(int i = 0; i<8; i++){
+				_cmdByte = (_cmdByte<<1) | (Serial2.read() > 0b11110000);
+
+			}
+			
+			//if we just reset reportCount, report the command we received and the number of strange commands we've seen so far over serial
+			if(_reportCount==0){
+				Serial.print("Received: ");
+				Serial.println(_cmdByte,BIN);
+				Serial.print("Error Count:");
+				Serial.println(_errorCount);
+			}
+			
+			//if the command byte is all 0s it is probe command, we will send a probe response
 			if(_cmdByte == 0b00000000){
-				Serial2.read();
-				Serial2.begin(_fastBaud);
+				//wait for the stop bit to be received and clear it
+				while(!Serial2.available()){}
+				Serial2.clear();
+				
+				//switch the hardware serial to high speed for sending the response, set the _writing flag to true, and set the expected bit queue length to the probe response length minus 1 (to account for the stop bit)
+				Serial2.begin(2500000);
 				_writing = true;
-				_writeQueue = _probeLength;
+				_bitQueue = _probeLength-1;
+				
+				//write the probe response
 				for(int i = 0; i<_probeLength; i++){
 					if(_probeResponse[i]){
+						//short low period = 1
 						Serial2.write(0b11111100);
 					}
 					else{
+						//long low period = 0
 						Serial2.write(0b11000000);
 					}
 				}
 			}
+			//if the command byte is 01000001 it is an origin command, we will send an origin response
 			else if(_cmdByte == 0b01000001){
-				Serial2.read();
-				Serial2.begin(_fastBaud);
+				//wait for the stop bit to be received and clear it
+				while(!Serial2.available()){}
+				Serial2.clear();
+				
+				//switch the hardware serial to high speed for sending the response, set the _writing flag to true, and set the expected bit queue length to the origin response length minus 1 (to account for the stop bit)
+				Serial2.begin(2500000);
 				_writing = true;
-				_writeQueue = _originLength;
+				_bitQueue = _originLength-1;
+				
+				//write the origin response
 				for(int i = 0; i<_originLength; i++){
 					if(_originResponse[i]){
+						//short low period = 1
 						Serial2.write(0b11111100);
 					}
 					else{
+						//long low period = 0
 						Serial2.write(0b11000000);
 					}
 				}
 			}
+			
+			//if the command byte is 01000000 it is an poll command, we need to wait for the poll command to finish then send our poll response
+			//to do this we will set our expected bit queue to the remaining length of the poll command, and wait until it is finished
 			else if(_cmdByte == 0b01000000){
 				_waiting = true;
-				_waitQueue = 17;
+				_bitQueue = 16;
 			}
-      
-      //digitalWriteFast(12,LOW);
-    }
-  }
+			//if we got something else then something went wrong, print the command we got and increase the error count
+			else{
+				Serial.print("error: ");
+				Serial.println(_cmdByte,BIN);
+				_errorCount ++;
+				
+				//we don't know for sure what state things are in, so clear, flush, and restart the serial port at low speed to be ready to receive a command
+				Serial2.clear();
+				Serial2.flush();
+				Serial2.begin(2000000);
+				//set our expected bit queue to 8, which will collect the first byte of any command we receive
+				_bitQueue = 8;
+			}
+		}
+	}
+	//turn the LED back on to indicate we are not stuck
+	digitalWriteFast(13,HIGH);
 }
 
 void readEEPROM(){
@@ -912,9 +912,9 @@ void readSticks(){
 	_cStickX = (_cStickX + adc->adc0->analogRead(_pinCx)/4096.0)*0.5;
 	_cStickY = (_cStickY + adc->adc0->analogRead(_pinCy)/4096.0)*0.5;
 	
-	Serial.print(_cStickX);
-	Serial.print(",");
-	Serial.println(_cStickY);
+	//Serial.print(_cStickX);
+	//Serial.print(",");
+	//Serial.println(_cStickY);
 
 	
 	//create the measurement vector to be used in the kalman filter
@@ -995,9 +995,9 @@ void readSticks(){
 	//Serial.print(",");
 	//Serial.print((posAy+127.5),8);
 	//Serial.print(",");
-	Serial.print(btn.Cx);
-	Serial.print(",");
-	Serial.println(btn.Cy);
+	//Serial.print(btn.Cx);
+	//Serial.print(",");
+	//Serial.println(btn.Cy);
 }
 /*******************
 	notchRemap
