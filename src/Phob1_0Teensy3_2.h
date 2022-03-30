@@ -47,6 +47,8 @@ void boardSpecificSetup(ADC * adc,
     adc->adc1->setConversionSpeed(ADC_CONVERSION_SPEED::MED_SPEED);
     adc->adc1->setSamplingSpeed(ADC_SAMPLING_SPEED::VERY_LOW_SPEED);
 
+    VREF::start();
+
     double refVoltage = 0;
     for (int i = 0; i < 512; i++) {
         int value = adc->adc1->analogRead(ADC_INTERNAL_SOURCE::VREF_OUT);
@@ -57,12 +59,17 @@ void boardSpecificSetup(ADC * adc,
 
     ADCScale = 1.2/refVoltage;
 
+    Serial.print("ADCScale: ");
+    Serial.println(ADCScale);
+
     adc->adc1->setAveraging(4);
     adc->adc1->setResolution(12);
     adc->adc1->setConversionSpeed(ADC_CONVERSION_SPEED::MED_SPEED);
     adc->adc1->setSamplingSpeed(ADC_SAMPLING_SPEED::VERY_LOW_SPEED);
 
     ADCScaleFactor = 0.001*1.2*adc->adc1->getMaxValue()/3.3;
+    Serial.print("ADCScaleFactor: ");
+    Serial.println(ADCScaleFactor);
 }
 
 #endif // BOARD_H
