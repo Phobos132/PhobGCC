@@ -44,6 +44,8 @@ int _pinZSwappable = _pinZ;
 int _pinXSwappable = _pinX;
 int _pinYSwappable = _pinY;
 int _jumpConfig = 0;
+int _cycleTime = 0;
+int _cycleStep = 0;
 
 ///// Values used for dealing with snapback in the Kalman Filter, a 6th power relationship between distance to center and ADC/acceleration variance is used, this was arrived at by trial and error
 //const float _accelVarFast = 0.5; //governs the acceleration variation around the edge of the gate, higher value means less filtering
@@ -328,6 +330,7 @@ void setup() {
 	//ARM_DWT_CTRL |= ARM_DWT_CTRL_CYCCNTENA;
 	//attachInterrupt(_pinRX, bitCounter, FALLING);
 	//NVIC_SET_PRIORITY(IRQ_GPIO6789, 0);
+	_cycleTime = millis();
 }
 
 void loop() {
@@ -354,11 +357,42 @@ void loop() {
 	}
 	//update the pole message so new data will be sent to the gamecube
 	//if(_running){
+	cycleInputs();
 	setPole();
 	//}
 
 }
 
+void cycleInputs(){
+	unsigned int timeSinceStep = millis() - _cycleTime;
+	
+	btn.Ax = _cycleStep*10;
+	btn.Ay = _cycleStep*10;
+	btn.Cx = _cycleStep*10;
+	btn.Cy = _cycleStep*10;
+	btn.Ra = _cycleStep*10;
+	btn.La = _cycleStep*10;
+		
+	btn.A = _cycleStep % 2;
+	btn.B = _cycleStep % 2;
+	btn.X = _cycleStep % 2;
+	btn.Y = _cycleStep % 2;
+	btn.Z = _cycleStep % 2;
+	btn.L = _cycleStep % 2;
+	btn.R = _cycleStep % 2;
+	btn.S = _cycleStep % 2;
+		
+	if(timeSinceStep > 500){
+		
+		//Serial.println("cycleStep");
+		
+		_cycleTime =  millis();
+		_cycleStep ++;
+		if(_cycleStep > 25){
+			_cycleStep = 0;
+		}
+	}
+}
 //commInt() will be called on every rising edge of a pulse that we receive
 //we will check if we have the expected amount of serial data yet, if we do we will do something with it, if we don't we will do nothing and wait for the next rising edge to check again
 void commInt() {
