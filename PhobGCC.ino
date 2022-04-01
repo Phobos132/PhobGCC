@@ -223,8 +223,9 @@ float _dT;
 bool _running = false;
 
 //The median filter can be either length 3, 4, or 5.
-//Or you can comment out the lines in readSticks to disable it entirely.
 #define MEDIANLEN 3
+//Or just uncomment this define to disable it entirely.
+#define USEMEDIAN
 float _xPosList[MEDIANLEN];//for median filtering
 float _yPosList[MEDIANLEN];//for median filtering
 unsigned int _xMedianIndex;
@@ -841,8 +842,10 @@ void readSticks(){
 	float posCy = linearize(_cStickY,_cFitCoeffsY);
 
     //Run a median filter to reduce noise
+#ifdef USEMEDIAN
     runMedian(xZ, _xPosList, _xMedianIndex);
     runMedian(yZ, _yPosList, _yMedianIndex);
+#endif
 
 	//Run the kalman filter to eliminate snapback
 	runKalman(xZ,yZ);
