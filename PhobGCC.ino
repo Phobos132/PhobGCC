@@ -223,9 +223,9 @@ float _dT;
 bool _running = false;
 
 //The median filter can be either length 3, 4, or 5.
-#define MEDIANLEN 3
+#define MEDIANLEN 5
 //Or just uncomment this define to disable it entirely.
-#define USEMEDIAN
+//#define USEMEDIAN
 float _xPosList[MEDIANLEN];//for median filtering
 float _yPosList[MEDIANLEN];//for median filtering
 unsigned int _xMedianIndex;
