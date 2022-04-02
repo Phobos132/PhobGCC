@@ -1442,7 +1442,7 @@ void runMedian(float &val, float valArray[MEDIANLEN], unsigned int &medianIndex)
     tmpArray[3] = max(tmpArray[0], tmp);
     tmpArray[1] = min(tmpArray[1], tmpArray[4]);
     tmp         = min(tmpArray[1], valArray[2]);
-    tmpArray[2] = min(tmpArray[1], valArray[2]);
+    tmpArray[2] = max(tmpArray[1], valArray[2]);
     tmpArray[1] = tmp;
     tmp         = min(tmpArray[2], tmpArray[3]);
     val         = max(tmpArray[1], tmp);
