@@ -211,9 +211,9 @@ float _dT;
 bool _running = false;
 
 //The median filter can be either length 3, 4, or 5.
-#define MEDIANLEN 5
+#define MEDIANLEN 4
 //Or just comment this define to disable it entirely.
-//#define USEMEDIAN
+#define USEMEDIAN
 float _xPosList[MEDIANLEN];//for median filtering
 float _yPosList[MEDIANLEN];//for median filtering
 unsigned int _xMedianIndex;
@@ -409,7 +409,7 @@ void setup() {
 
 void loop() {
 	//read the controllers buttons
-	readButtons();
+	//readButtons();
 	//read the analog inputs
 	readSticks();
 	//check to see if we are calibrating
@@ -429,7 +429,7 @@ void loop() {
 	}
 	//update the pole message so new data will be sent to the gamecube
 	//if(_running){
-	setPole();
+	//setPole();
 	//}
 
 }
@@ -453,9 +453,9 @@ void commInt() {
 				for(int i = 0; i < _bitQueue+1; i++){
 					myBuffer[i] = (Serial2.read() > 0b11110000)+48;
 				}
-				Serial.print("Sent: ");
-				Serial.write(myBuffer,_bitQueue+1);
-				Serial.println();
+				//Serial.print("Sent: ");
+				//Serial.write(myBuffer,_bitQueue+1);
+				//Serial.println();
 			}
 
 			//flush and clear the any remaining data just to be sure
@@ -476,13 +476,13 @@ void commInt() {
 			digitalWriteFast(13,HIGH);
 			//check to see if we just reset reportCount to 0, if we have then we will report the remainder of the poll response to the PC over serial
 			if(_reportCount == 0){
-				Serial.print("Poll: ");
+				//Serial.print("Poll: ");
 				char myBuffer[128];
 				for(int i = 0; i < _bitQueue+1; i++){
 					myBuffer[i] = (Serial2.read() > 0b11110000)+48;
 				}
-				Serial.write(myBuffer,_bitQueue+1);
-				Serial.println();
+				//Serial.write(myBuffer,_bitQueue+1);
+				//Serial.println();
 			}
 
 			//clear any remaining data
@@ -531,10 +531,10 @@ void commInt() {
 
 			//if we just reset reportCount, report the command we received and the number of strange commands we've seen so far over serial
 			if(_reportCount==0){
-				Serial.print("Received: ");
-				Serial.println(_cmdByte,BIN);
-				Serial.print("Error Count:");
-				Serial.println(_errorCount);
+				//Serial.print("Received: ");
+				//Serial.println(_cmdByte,BIN);
+				//Serial.print("Error Count:");
+				//Serial.println(_errorCount);
 			}
 
 			//if the command byte is all 0s it is probe command, we will send a probe response
@@ -589,11 +589,13 @@ void commInt() {
 			else if(_cmdByte == 0b01000000){
 				_waiting = true;
 				_bitQueue = 16;
+				readButtons();
+				setPole();
 			}
 			//if we got something else then something went wrong, print the command we got and increase the error count
 			else{
-				Serial.print("error: ");
-				Serial.println(_cmdByte,BIN);
+				//Serial.print("error: ");
+				//Serial.println(_cmdByte,BIN);
 				_errorCount ++;
 
 				//we don't know for sure what state things are in, so clear, flush, and restart the serial port at low speed to be ready to receive a command
@@ -1054,13 +1056,13 @@ void readSticks(){
 		yield();
 		//Serial.println("waiting 4");
 	}
-	//Serial.print(_adcCounts[0]);
-	//Serial.print(',');
+	Serial.print(_adcCounts[0]);
+	Serial.print(',');
 	float tempAx = _adcSums[0]/(float)_adcCounts[0];
 	_aStickY = _adcSums[1]/(float)_adcCounts[1]/4096.0*_ADCScale;
 	_cStickX = _adcSums[2]/(float)_adcCounts[2]/4096.0*_ADCScale;
 	_cStickY = _adcSums[3]/(float)_adcCounts[3]/4096.0*_ADCScale;
-	
+	/* 
 	int valMed[4];
 	int sumMed[] = {0,0,0,0};
 	for(int i = 0; i<4; i++){
@@ -1073,12 +1075,12 @@ void readSticks(){
 		_adcMins[i] = 4096;
 	}
 	memset(_adcBins, 0, sizeof(_adcBins));
-
+ */
 	
-	Serial.print(tempAx);
-	Serial.print(',');
-	Serial.print(valMed[0]);
-	Serial.print(',');
+	//Serial.print(tempAx);
+	//Serial.print(',');
+	//Serial.print(valMed[0]);
+	//Serial.print(',');
 	
 	_aStickX = tempAx/4096.0*_ADCScale;
 	
@@ -1117,7 +1119,7 @@ void readSticks(){
 	_dT = (micros() - _lastMicros)/1000.0;
 	_lastMicros = micros();
 	
-	//Serial.println(_dT);
+	Serial.println(_dT);
 	
 	//create the measurement value to be used in the kalman filter
 	float xZ;
@@ -1126,7 +1128,10 @@ void readSticks(){
 	//linearize the analog stick inputs by multiplying by the coefficients found during calibration (3rd order fit)
 	xZ = linearize(_aStickX,_aFitCoeffsX);
 	yZ = linearize(_aStickY,_aFitCoeffsY);
-
+	
+	//Serial.print(xZ);
+	//Serial.print(',');
+	
   float posCx = linearize(_cStickX,_cFitCoeffsX);
 	float posCy = linearize(_cStickY,_cFitCoeffsY);
 
@@ -1134,7 +1139,9 @@ void readSticks(){
 
 	//Run the kalman filter to eliminate snapback
 	runKalman(xZ,yZ);
-
+	
+	//Serial.print(xZ);
+	//Serial.print(',');
 
 	float posAx = _xPosFilt;
 	float posAy = _yPosFilt;
@@ -1145,10 +1152,14 @@ void readSticks(){
     runMedian(posAy, _yPosList, _yMedianIndex);
 #endif
 
+	//Serial.print(posAx);
+	//Serial.print(',');
+	
 	notchRemap(posAx, posAy, &posAx,  &posAy, _aAffineCoeffs, _aBoundaryAngles,_noOfNotches);
 	notchRemap(posCx,posCy, &posCx,  &posCy, _cAffineCoeffs, _cBoundaryAngles,_noOfNotches);
 	
-	Serial.println(posAx);
+	
+	//Serial.println(posAx,4);
 	float hystVal = 0.3;
 	//assign the remapped values to the button struct
 	if(_running){
@@ -1345,6 +1356,8 @@ void communicate(){
 		case 0x40:
 			timer1.trigger(56);
 			_commStatus = _commPoll;
+			readButtons();
+			setPole();
 			break;
 		default:
 		  //got something strange, try waiting for a stop bit to syncronize
@@ -1863,11 +1876,11 @@ void runKalman(const float xZ,const float yZ){
     //  acceleration in order to rule out snapback.
     //When the stick is near the rim, we also want instant response, and we know snapback
     //  doesn't reach the rim.
-    const float xPosWeightVelAcc = 0.95 - min(0.95, xVelSmooth*xVelSmooth*g.velThresh + xAccel*xAccel*g.accelThresh);
-    const float xPosWeight1 = max(xPosWeightVelAcc, stickDistance6*0.95);
+    const float xPosWeightVelAcc = 1 - min(1, xVelSmooth*xVelSmooth*g.velThresh + xAccel*xAccel*g.accelThresh);
+    const float xPosWeight1 = max(xPosWeightVelAcc, stickDistance6);
     const float xPosWeight2 = 1-xPosWeight1;
-    const float yPosWeightVelAcc = 0.95 - min(0.95, yVelSmooth*yVelSmooth*g.velThresh + yAccel*yAccel*g.accelThresh);
-    const float yPosWeight1 = max(yPosWeightVelAcc, stickDistance6*0.95);
+    const float yPosWeightVelAcc = 1 - min(1, yVelSmooth*yVelSmooth*g.velThresh + yAccel*yAccel*g.accelThresh);
+    const float yPosWeight1 = max(yPosWeightVelAcc, stickDistance6);
     const float yPosWeight2 = 1-yPosWeight1;
 		yield();
     //In calculating the filtered stick position, we have the following components
@@ -1923,8 +1936,8 @@ void adc0_isr(void) {
 	int val = adc->adc0->readSingle();
 	if(_adcIndex<4){
 		//store values for median calc
-		_adcBins[_adcIndex][val] ++;
-		_adcMins[_adcIndex] = min(_adcMins[_adcIndex],val);
+		//_adcBins[_adcIndex][val] ++;
+		//_adcMins[_adcIndex] = min(_adcMins[_adcIndex],val);
 		
 		//store values for mean calc
     _adcSums[_adcIndex] += val;
