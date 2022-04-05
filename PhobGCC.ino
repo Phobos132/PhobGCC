@@ -21,6 +21,8 @@ TeensyTimerTool::OneShotTimer timer1;
 //adc averaging stuff
 int _adcSums[] = {0,0,0,0};
 int _adcCounts[] = {0,0,0,0};
+uint16_t _adcBins[4][4096];
+int _adcMins[] = {0,0,0,0};
 int _adcPins[] = {_pinAx,_pinAy,_pinCx,_pinCy,_pinLa,_pinRa};
 int _adcIndex = 0;
 bool _adcRunning = false;
@@ -211,7 +213,7 @@ bool _running = false;
 //The median filter can be either length 3, 4, or 5.
 #define MEDIANLEN 5
 //Or just comment this define to disable it entirely.
-#define USEMEDIAN
+//#define USEMEDIAN
 float _xPosList[MEDIANLEN];//for median filtering
 float _yPosList[MEDIANLEN];//for median filtering
 unsigned int _xMedianIndex;
@@ -372,6 +374,8 @@ void setup() {
 		
 		_adcRunning = true;
     ADCSetup(adc, _ADCScale, _ADCScaleFactor);
+		
+		memset(_adcBins, 0, sizeof(_adcBins));
 		adc->adc0->enableInterrupts(adc0_isr);
 		adc->adc0->startSingleRead(_adcPins[_adcIndex]);
 		
@@ -1052,11 +1056,32 @@ void readSticks(){
 	}
 	//Serial.print(_adcCounts[0]);
 	//Serial.print(',');
-	_aStickX = _adcSums[0]/(float)_adcCounts[0]/4096.0*_ADCScale;
+	float tempAx = _adcSums[0]/(float)_adcCounts[0];
 	_aStickY = _adcSums[1]/(float)_adcCounts[1]/4096.0*_ADCScale;
 	_cStickX = _adcSums[2]/(float)_adcCounts[2]/4096.0*_ADCScale;
 	_cStickY = _adcSums[3]/(float)_adcCounts[3]/4096.0*_ADCScale;
+	
+	int valMed[4];
+	int sumMed[] = {0,0,0,0};
+	for(int i = 0; i<4; i++){
+		int j = _adcMins[i];
+		while(sumMed[i] < _adcCounts[i] / 2){
+			sumMed[i] += _adcBins[i][j];
+			j++;
+		}
+		valMed[i] = j;
+		_adcMins[i] = 4096;
+	}
+	memset(_adcBins, 0, sizeof(_adcBins));
 
+	
+	Serial.print(tempAx);
+	Serial.print(',');
+	Serial.print(valMed[0]);
+	Serial.print(',');
+	
+	_aStickX = tempAx/4096.0*_ADCScale;
+	
 	//read the L and R sliders
 	if(_lConfig == 0) {
 		//btn.La = adc->adc0->analogRead(_pinLa)>>4;
@@ -1890,9 +1915,19 @@ void startContADC(void){
 	_adcRunning = true;
 	adc->adc0->startSingleRead(_adcPins[_adcIndex]);
 }
+
+
+
+
 void adc0_isr(void) {
+	int val = adc->adc0->readSingle();
 	if(_adcIndex<4){
-    _adcSums[_adcIndex] += adc->adc0->readSingle();
+		//store values for median calc
+		_adcBins[_adcIndex][val] ++;
+		_adcMins[_adcIndex] = min(_adcMins[_adcIndex],val);
+		
+		//store values for mean calc
+    _adcSums[_adcIndex] += val;
 		_adcCounts[_adcIndex] ++;
 		_adcIndex = (_adcIndex + 1) % 4;
 		if(_adcRunning){
@@ -1903,11 +1938,11 @@ void adc0_isr(void) {
 		}
 	}
 	else if(_adcIndex == 4){
-		btn.La = adc->adc0->readSingle()>>4 ;
+		btn.La = val >> 4 ;
 		_adcIndex = 5;
 	}
 	else if (_adcIndex == 5){
-		btn.Ra = adc->adc0->readSingle()>>4 ;
+		btn.Ra = val >> 4 ;
 		_adcIndex = 0;
 	}
 }
