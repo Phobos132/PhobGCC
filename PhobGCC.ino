@@ -11,13 +11,20 @@
 #include "TeensyTimerTool.h"
 
 //Uncomment the appropriate include line for your hardware.
-//#include "src/Phob1_0Teensy3_2.h"
+#include "src/Phob1_0Teensy3_2.h"
 //#include "src/Phob1_1Teensy3_2.h"
-#include "src/Phob1_1Teensy4_0.h"
+//#include "src/Phob1_1Teensy4_0.h"
 
 using namespace Eigen;
 
 TeensyTimerTool::OneShotTimer timer1;
+//adc averaging stuff
+int _adcSums[] = {0,0,0,0};
+int _adcCounts[] = {0,0,0,0};
+int _adcPins[] = {_pinAx,_pinAy,_pinCx,_pinCy,_pinLa,_pinRa};
+int _adcIndex = 0;
+bool _adcRunning = false;
+
 
 //defining control configuration
 int _pinZSwappable = _pinZ;
@@ -202,7 +209,7 @@ float _dT;
 bool _running = false;
 
 //The median filter can be either length 3, 4, or 5.
-#define MEDIANLEN 3
+#define MEDIANLEN 5
 //Or just comment this define to disable it entirely.
 #define USEMEDIAN
 float _xPosList[MEDIANLEN];//for median filtering
@@ -362,9 +369,12 @@ void setup() {
 	_lastMicros = micros();
 
     setPinModes();
-
+		
+		_adcRunning = true;
     ADCSetup(adc, _ADCScale, _ADCScaleFactor);
-
+		adc->adc0->enableInterrupts(adc0_isr);
+		adc->adc0->startSingleRead(_adcPins[_adcIndex]);
+		
 #ifdef TEENSY4_0
     attachInterrupt(9, commInt, RISING);
 #endif // TEENSY4_0
@@ -1034,41 +1044,55 @@ void readSticks(){
 	//read the analog stick, scale it down so that we don't get huge values when we linearize
 	//_aStickX = adc->adc0->analogRead(_pinAx)/4096.0*_ADCScale;
 	//_aStickY = adc->adc0->analogRead(_pinAy)/4096.0*_ADCScale;
-
+	
+	_adcRunning = false;
+	while(_adcIndex != 4){
+		yield();
+		//Serial.println("waiting 4");
+	}
+	//Serial.print(_adcCounts[0]);
+	//Serial.print(',');
+	_aStickX = _adcSums[0]/(float)_adcCounts[0]/4096.0*_ADCScale;
+	_aStickY = _adcSums[1]/(float)_adcCounts[1]/4096.0*_ADCScale;
+	_cStickX = _adcSums[2]/(float)_adcCounts[2]/4096.0*_ADCScale;
+	_cStickY = _adcSums[3]/(float)_adcCounts[3]/4096.0*_ADCScale;
 
 	//read the L and R sliders
 	if(_lConfig == 0) {
-			btn.La = adc->adc0->analogRead(_pinLa)>>4;
+		//btn.La = adc->adc0->analogRead(_pinLa)>>4;
+		adc->adc0->startSingleRead(_adcPins[_adcIndex]);
+		while(_adcIndex != 5){
+			yield();
+		}
 	} else {
 			btn.La = (uint8_t) 0;
 	}
 
 	if(_rConfig == 0) {
-		btn.Ra = adc->adc0->analogRead(_pinRa)>>4;
+		//btn.Ra = adc->adc0->analogRead(_pinRa)>>4;
+		adc->adc0->startSingleRead(_adcPins[_adcIndex]);
+		while(_adcIndex != 0){
+			yield();
+		}
 	} else {
 			btn.Ra = (uint8_t) 0;
 	}
-
+	
+	
+	startContADC();
+	
 	//read the c stick, scale it down so that we don't get huge values when we linearize
-	_cStickX = (_cStickX + adc->adc0->analogRead(_pinCx)/4096.0)*0.5;
-	_cStickY = (_cStickY + adc->adc0->analogRead(_pinCy)/4096.0)*0.5;
+	//_cStickX = (_cStickX + adc->adc0->analogRead(_pinCx)/4096.0)*0.5;
+	//_cStickY = (_cStickY + adc->adc0->analogRead(_pinCy)/4096.0)*0.5;
 	
-	unsigned int adcCount = 0;
-	unsigned int aXSum = 0;
-	unsigned int aYSum = 0;
-	
-	do{
-		adcCount++;
-		aXSum += adc->adc0->analogRead(_pinAx);
-		aYSum += adc->adc0->analogRead(_pinAy);
+	while((micros()-_lastMicros) < 1000){
+		yield();
 	}
-	while((micros()-_lastMicros) < 1000);
-	
-	_aStickX = aXSum/(float)adcCount/4096.0*_ADCScale;
-	_aStickY = aYSum/(float)adcCount/4096.0*_ADCScale;
 	
 	_dT = (micros() - _lastMicros)/1000.0;
 	_lastMicros = micros();
+	
+	//Serial.println(_dT);
 	
 	//create the measurement value to be used in the kalman filter
 	float xZ;
@@ -1098,7 +1122,8 @@ void readSticks(){
 
 	notchRemap(posAx, posAy, &posAx,  &posAy, _aAffineCoeffs, _aBoundaryAngles,_noOfNotches);
 	notchRemap(posCx,posCy, &posCx,  &posCy, _cAffineCoeffs, _cBoundaryAngles,_noOfNotches);
-
+	
+	Serial.println(posAx);
 	float hystVal = 0.3;
 	//assign the remapped values to the button struct
 	if(_running){
@@ -1135,6 +1160,7 @@ void notchRemap(float xIn, float yIn, float* xOut, float* yOut, float affineCoef
 	//unwrap the angle based on the first region boundary
 	if(angle < regionAngles[0]){
 		angle += M_PI*2;
+		yield();
 	}
 
 	//go through the region boundaries from lowest angle to highest, checking if the current position vector is in that region
@@ -1147,6 +1173,7 @@ void notchRemap(float xIn, float yIn, float* xOut, float* yOut, float affineCoef
 			region = i-1;
 			break;
 		}
+		yield();
 	}
 
 	//Apply the affine transformation using the coefficients found during calibration
@@ -1187,6 +1214,7 @@ void setPole(){
 				pollResponse[(i<<2)+j] = 0xEF;
 				break;
 			}
+			yield();
 		}
 #endif // TEENSY3_2
 #ifdef TEENSY4_0
@@ -1215,7 +1243,7 @@ void communicate(){
 	if(_commStatus == _commRead){
 		//digitalWriteFast(12,LOW);
 		//Serial.println(Serial2.available(),DEC);
-		while(Serial2.available() < (CMD_LENGTH_SHORT-1)){}
+		while(Serial2.available() < (CMD_LENGTH_SHORT-1)){yield();}
 			cmdByte = 0;
 			for(int i = 0; i < CMD_LENGTH_SHORT-1; i++){
 				cmd[i] = Serial2.read();
@@ -1308,7 +1336,7 @@ void communicate(){
 
 			uint8_t thisbyte = 0;
 		  while(thisbyte != 0xFF){
-				while(!Serial2.available());
+				while(!Serial2.available()){yield();};
 				thisbyte = Serial2.read();
 				Serial.println(thisbyte,BIN);
 			}
@@ -1334,7 +1362,7 @@ void communicate(){
 	}
 	else if(_commStatus == _commWrite){
 		//digitalWriteFast(12,LOW);
- 		while(_writeQueue > _bitCount){}
+ 		while(_writeQueue > _bitCount){yield();}
 
 		UART1_BDH = _slowBDH;
 		UART1_BDL = _slowBDL;
@@ -1474,29 +1502,74 @@ void collectCalPoints(bool aStick, int currentStep, float calPointsX[], float ca
 	float X;
 	float Y;
 	
+	_adcRunning = false;
+	while(_adcIndex != 4){
+			yield();
+		}
+	
 	for(int j = 0; j < MEDIANLEN; j++){
 		X = 0;
 		Y = 0;
-		for(int i = 0; i < 128; i++){
+		for(int i = 0; i < 4; i++){
+					_adcCounts[i] = 0;
+					_adcSums[i] = 0;
+				}
+		for(int i = 0; i < 512; i++){
 			if(aStick){
 #ifdef USEADCSCALE
 							_ADCScale = _ADCScale*0.999 + _ADCScaleFactor/adc->adc1->analogRead(ADC_INTERNAL_SOURCE::VREF_OUT);
 #endif
 							//otherwise _ADCScale is 1
-				X += adc->adc0->analogRead(_pinAx)/4096.0*_ADCScale;
-				Y += adc->adc0->analogRead(_pinAy)/4096.0*_ADCScale;
+				
+				//X += adc->adc0->analogRead(_pinAx)/4096.0*_ADCScale;
+				//Y += adc->adc0->analogRead(_pinAy)/4096.0*_ADCScale;
+				_adcIndex = 0;
+				
+				adc->adc0->startSingleRead(_adcPins[_adcIndex]);
+				while(_adcIndex == 0){
+					yield();
+				}
+				_adcIndex = 1;
+				
+				adc->adc0->startSingleRead(_adcPins[_adcIndex]);
+				while(_adcIndex == 1){
+					yield();
+				}
+				
 			}
 			else{
-				X += adc->adc0->analogRead(_pinCx)/4096.0;
-				Y += adc->adc0->analogRead(_pinCy)/4096.0;
+				//X += adc->adc0->analogRead(_pinCx)/4096.0;
+				//Y += adc->adc0->analogRead(_pinCy)/4096.0;
+				_adcIndex = 2;
+				adc->adc0->startSingleRead(_adcPins[_adcIndex]);
+				while(_adcIndex == 2){
+					yield();
+				}
+				
+				_adcIndex = 3;
+				adc->adc0->startSingleRead(_adcPins[_adcIndex]);
+				while(_adcIndex == 3){
+					yield();
+				}
 			}
 		}
-		X = X/128.0;
-		Y = Y/128.0;
+		
+		if(aStick){
+			X = _adcSums[0]/(float)_adcCounts[0]/4096.0*_ADCScale;
+			Y = _adcSums[1]/(float)_adcCounts[1]/4096.0*_ADCScale;
+		}
+		else{
+			X = _adcSums[2]/(float)_adcCounts[2]/4096.0*_ADCScale;
+			Y = _adcSums[3]/(float)_adcCounts[3]/4096.0*_ADCScale;
+		}
+		//X = X/512.0;
+		//Y = Y/512.0;
 		runMedian(X, _xPosList, _xMedianIndex);
     runMedian(Y, _yPosList, _yMedianIndex);
 	}
-
+	
+	startContADC();
+	
 	calPointsX[currentStep] = X;
 	calPointsY[currentStep] = Y;
 
@@ -1708,7 +1781,7 @@ void runKalman(const float xZ,const float yZ){
     g.accelThresh   = 1/(_gains.accelThresh * timeFactor);
     g.velThresh     = g.velThresh*g.velThresh;//square it because it's used squared
     g.accelThresh   = g.accelThresh*g.accelThresh;
-
+		yield();
     //save previous values of state
     //float _xPos;//input of kalman filter
     //float _yPos;//input of kalman filter
@@ -1738,7 +1811,7 @@ void runKalman(const float xZ,const float yZ){
     const float yAccel = _yVel - oldYVel;
     const float oldXPosDiff = oldXPos - oldXPosFilt;
     const float oldYPosDiff = oldYPos - oldYPosFilt;
-
+		yield();
     //compute stick position exponents for weights
     const float stickDistance2 = min(g.maxStick, _xPos*_xPos + _yPos*_yPos)/g.maxStick;//0-1
     const float stickDistance6 = stickDistance2*stickDistance2*stickDistance2;
@@ -1754,7 +1827,7 @@ void runKalman(const float xZ,const float yZ){
     //term 3: a corrective factor based on the disagreement between real and filtered position
     _xVelFilt = velWeight1*_xVel + (1-g.xVelDecay)*velWeight2*oldXVelFilt + g.xVelPosFactor*oldXPosDiff;
     _yVelFilt = velWeight1*_yVel + (1-g.yVelDecay)*velWeight2*oldYVelFilt + g.yVelPosFactor*oldYPosDiff;
-
+		yield();
     //the current position weight used for the filtered position is whatever is larger of
     //  a) 1 minus the sum of the squares of
     //    1) the smoothed velocity divided by the velocity threshold
@@ -1765,13 +1838,13 @@ void runKalman(const float xZ,const float yZ){
     //  acceleration in order to rule out snapback.
     //When the stick is near the rim, we also want instant response, and we know snapback
     //  doesn't reach the rim.
-    const float xPosWeightVelAcc = 1 - min(1, xVelSmooth*xVelSmooth*g.velThresh + xAccel*xAccel*g.accelThresh);
-    const float xPosWeight1 = max(xPosWeightVelAcc, stickDistance6);
+    const float xPosWeightVelAcc = 0.95 - min(0.95, xVelSmooth*xVelSmooth*g.velThresh + xAccel*xAccel*g.accelThresh);
+    const float xPosWeight1 = max(xPosWeightVelAcc, stickDistance6*0.95);
     const float xPosWeight2 = 1-xPosWeight1;
-    const float yPosWeightVelAcc = 1 - min(1, yVelSmooth*yVelSmooth*g.velThresh + yAccel*yAccel*g.accelThresh);
-    const float yPosWeight1 = max(yPosWeightVelAcc, stickDistance6);
+    const float yPosWeightVelAcc = 0.95 - min(0.95, yVelSmooth*yVelSmooth*g.velThresh + yAccel*yAccel*g.accelThresh);
+    const float yPosWeight1 = max(yPosWeightVelAcc, stickDistance6*0.95);
     const float yPosWeight2 = 1-yPosWeight1;
-
+		yield();
     //In calculating the filtered stick position, we have the following components
     //term 1: current position, weighted according to the above weight
     //term 2: a predicted position based on the filtered velocity and previous filtered position,
@@ -1781,6 +1854,7 @@ void runKalman(const float xZ,const float yZ){
                 xPosWeight2*(oldXPosFilt + (1-g.xVelDamp)*_xVelFilt);
     _yPosFilt = yPosWeight1*_yPos +
                 yPosWeight2*(oldYPosFilt + (1-g.yVelDamp)*_yVelFilt);
+		yield();
 }
 
 
@@ -1805,4 +1879,35 @@ void print_mtxf(const Eigen::MatrixXf& X){
 void calcStickValues(float angle, float* x, float* y){
 	*x = 100*atan2f((sinf(_maxStickAngle)*cosf(angle)),cosf(_maxStickAngle))/_maxStickAngle;
 	*y = 100*atan2f((sinf(_maxStickAngle)*sinf(angle)),cosf(_maxStickAngle))/_maxStickAngle;
+}
+
+void startContADC(void){
+	for(int i = 0; i < 4; i++){
+		_adcCounts[i] = 0;
+		_adcSums[i] = 0;
+	}
+	_adcIndex = 0;
+	_adcRunning = true;
+	adc->adc0->startSingleRead(_adcPins[_adcIndex]);
+}
+void adc0_isr(void) {
+	if(_adcIndex<4){
+    _adcSums[_adcIndex] += adc->adc0->readSingle();
+		_adcCounts[_adcIndex] ++;
+		_adcIndex = (_adcIndex + 1) % 4;
+		if(_adcRunning){
+			adc->adc0->startSingleRead(_adcPins[_adcIndex]);
+		}
+		else{
+			_adcIndex = 4;
+		}
+	}
+	else if(_adcIndex == 4){
+		btn.La = adc->adc0->readSingle()>>4 ;
+		_adcIndex = 5;
+	}
+	else if (_adcIndex == 5){
+		btn.Ra = adc->adc0->readSingle()>>4 ;
+		_adcIndex = 0;
+	}
 }
