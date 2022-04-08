@@ -552,63 +552,65 @@ void readButtons(){
 
 
 	//check the dpad buttons to change the controller settings
-	if(bounceDr.fell() && !_safeMode){
-		if(_currentCalStep == -1){
-			Serial.println("Calibrating the C stick");
-			_calAStick = false;
-			_currentCalStep ++;
-			_advanceCal = true;
-		}
-	}
-	else if(bounceDl.fell() && !_safeMode){
-		if(_currentCalStep == -1){
-			if(btn.S && btn.X && btn.Y){
-				resetDefaults();
-			}
-			else{
-				Serial.println("Calibrating the A stick");
-				_calAStick = true;
-				_currentCalStep ++;
-				_advanceCal = true;
-			}
-		}
-	}
-	else if(bounceDu.fell() && !_safeMode){
-		adjustSnapback(btn.Cx,btn.Cy);
-	}
-  else if(bounceDd.fell() && !_safeMode){
-    if(btn.S) {
-      _safeMode = true;
-    }
-		else if(btn.L) {
-			setLRToggle(_lTrigger, 0, _changeTrigger);
-		} else if(btn.R) {
-			setLRToggle(_rTrigger, 0, _changeTrigger);
-		} else if (btn.X) {
-			if(btn.A) {
-				_cXOffset++;
-				EEPROM.put(_eepromcXOffset, _cXOffset);
-			} else if(btn.B) {
-				_cXOffset--;
-				EEPROM.put(_eepromcXOffset, _cXOffset);
-			}
-		} else if(btn.Y) {
-			if(btn.A) {
-				_cYOffset++;
-				EEPROM.put(_eepromcYOffset, _cYOffset);
-			} else if(btn.B) {
-				_cYOffset--;
-				EEPROM.put(_eepromcYOffset, _cYOffset);
-			}
-		} else {
-			readJumpConfig();
-		}
-	}
-  else if(bounceDd.fell() && _safeMode) {
+  if(!_safeMode) {
+
+  	if(bounceDr.fell()){
+  		if(_currentCalStep == -1){
+  			Serial.println("Calibrating the C stick");
+  			_calAStick = false;
+  			_currentCalStep ++;
+  			_advanceCal = true;
+  		}
+  	}
+  	else if(bounceDl.fell()){
+  		if(_currentCalStep == -1){
+  			if(btn.S && btn.X && btn.Y){
+  				resetDefaults();
+  			}
+  			else{
+  				Serial.println("Calibrating the A stick");
+  				_calAStick = true;
+  				_currentCalStep ++;
+  				_advanceCal = true;
+  			}
+  		}
+  	}
+  	else if(bounceDu.fell()){
+  		adjustSnapback(btn.Cx,btn.Cy);
+  	}
+    else if(bounceDd.fell() && !_safeMode){
+      if(btn.S) {
+        _safeMode = true;
+      } else if(btn.L) {
+  			setLRToggle(_lTrigger, 0, _changeTrigger);
+  		} else if(btn.R) {
+  			setLRToggle(_rTrigger, 0, _changeTrigger);
+      } else if(btn.A) {
+        if(btn.X) {
+          _cXOffset++;
+          EEPROM.put(_eepromcXOffset, _cXOffset);
+        } else if (btn.Y) {
+          _cYOffset++;
+          EEPROM.put(_eepromcYOffset, _cYOffset);
+        }
+      } else if(btn.B) {
+        if(btn.X) {
+          _cXOffset--;
+          EEPROM.put(_eepromcXOffset, _cXOffset);
+        } else if (btn.Y) {
+          _cYOffset--;
+          EEPROM.put(_eepromcYOffset, _cYOffset);
+        }
+  		} else {
+  			readJumpConfig();
+  		}
+  	}
+  } else if(bounceDd.fell()) {
     if(btn.S) {
       _safeMode = false;
     }
   }
+
 	//Undo Calibration using B-button
 	if(btn.B && _undoCal && !_undoCalPressed) {
 		_undoCalPressed = true;
