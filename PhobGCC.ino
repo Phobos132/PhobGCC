@@ -322,7 +322,7 @@ void setup() {
 	//UART1_C2 &= ~UART_C2_RE;
 	//attach the interrupt which will call the communicate function when the data line transitions from high to low
 
-	//timer1.begin(communicate);
+	timer1.begin(resetSerial);
 	//timer2.begin(checkCmd);
 	//timer3.begin(writePole);
 	//digitalWriteFast(12,HIGH);
@@ -357,7 +357,7 @@ void loop() {
 	}
 	//update the pole message so new data will be sent to the gamecube
 	//if(_running){
-	cycleInputs();
+	//cycleInputs();
 	setPole();
 	//}
 
@@ -396,28 +396,25 @@ void cycleInputs(){
 //commInt() will be called on every rising edge of a pulse that we receive
 //we will check if we have the expected amount of serial data yet, if we do we will do something with it, if we don't we will do nothing and wait for the next rising edge to check again
 void commInt() {
+	digitalWriteFast(13,LOW);
 	//check to see if we have the expected amount of data yet
 	if(Serial2.available() >= _bitQueue){
 		//check to see if we were waiting for a poll command to finish
 		//if we are, we need to clear the data and send our poll response
 		if(_waiting){
-			digitalWriteFast(13,LOW);
 			//wait for the stop bit to be received
-			while(Serial2.available() <= _bitQueue){}
+			while(Serial2.available() < _bitQueue){}
 			//check to see if we just reset reportCount to 0, if we have then we will report the remainder of the poll response to the PC over serial
 			if(_reportCount == 0){
 				Serial.print("Poll: ");
 				char myBuffer[128];
-				for(int i = 0; i < _bitQueue+1; i++){
+				for(int i = 0; i < _bitQueue; i++){
 					myBuffer[i] = (Serial2.read() > 0b11110000)+48;
 				}
-				Serial.write(myBuffer,_bitQueue+1);
+				Serial.write(myBuffer,_bitQueue);
 				Serial.println();
 			}
-			
-			//clear any remaining data
-			Serial2.clear();
-			
+
 			//clear any remaining data, set the waiting flag to false, and set the serial port to high speed to be ready to send our poll response
 			Serial2.clear();
 			_waiting = false;
@@ -426,7 +423,8 @@ void commInt() {
 			//set the writing flag to true, set our expected bit queue to the poll response length -1 (to account for the stop bit)
 			//_writing = true;
 			//_bitQueue = _pollLength-1;
-			_bitQueue = 8;
+			
+			
 			
 			//write the poll response
 			for(int i = 0; i<_pollLength; i++){
@@ -439,15 +437,13 @@ void commInt() {
 					Serial2.write(0b11000000);
 				}
 			}
-			Serial2.flush();
-			Serial2.begin(_slowBaud,SERIAL_HALF_DUPLEX);
-			digitalWriteFast(13,HIGH);
+			//start the timer to reset the the serial port when the response has been sent
+			timer1.trigger(175);
+			_bitQueue = 8;
+			
 		}
 		else{
-			//We are not writing a response or waiting for a poll response to finish, so we must have received the start of a new command
-			//Set pin 13 (LED) low for debugging, if it flickers it means the teensy got stuck here somewhere
-			digitalWriteFast(13,LOW);
-			
+			//We are not writing a response or waiting for a poll response to finish, so we must have received the start of a new command	
 			//increment the report count, will be used to only send a report every 64 commands to not overload the PC serial connection
 			_reportCount++;
 			if(_reportCount > 64){
@@ -493,8 +489,7 @@ void commInt() {
 						Serial2.write(0b11000000);
 					}
 				}
-				Serial2.flush();
-				Serial2.begin(_slowBaud,SERIAL_HALF_DUPLEX);
+				resetSerial();
 			}
 			//if the command byte is 01000001 it is an origin command, we will send an origin response
 			else if(_cmdByte == 0b01000001){
@@ -518,8 +513,7 @@ void commInt() {
 						Serial2.write(0b11000000);
 					}
 				}
-				Serial2.flush();
-				Serial2.begin(_slowBaud,SERIAL_HALF_DUPLEX);
+				resetSerial();
 			}
 			
 			//if the command byte is 01000000 it is an poll command, we need to wait for the poll command to finish then send our poll response
@@ -535,9 +529,7 @@ void commInt() {
 				_errorCount ++;
 				
 				//we don't know for sure what state things are in, so clear, flush, and restart the serial port at low speed to be ready to receive a command
-				Serial2.clear();
-				Serial2.flush();
-				Serial2.begin(_slowBaud,SERIAL_HALF_DUPLEX);
+				resetSerial();
 				//set our expected bit queue to 8, which will collect the first byte of any command we receive
 				_bitQueue = 8;
 			}
@@ -546,7 +538,13 @@ void commInt() {
 	//turn the LED back on to indicate we are not stuck
 	digitalWriteFast(13,HIGH);
 }
-
+void resetSerial(){
+	digitalWriteFast(13,!digitalReadFast(13));
+	Serial2.clear();
+	Serial2.flush();
+	Serial2.begin(_slowBaud,SERIAL_HALF_DUPLEX);
+	digitalWriteFast(13,!digitalReadFast(13));
+}
 void readEEPROM(){
 	//get the jump setting
 	EEPROM.get(_eepromJump, _jumpConfig);
@@ -1311,7 +1309,7 @@ void cleanCalPoints(float calPointsX[], float  calPointsY[], float notchAngles[]
 		Serial.println(notchPointsY[i]);
 	}
 }
-void adjustNotch(int currentStep, int loopDelta, bool CW, int CCW, bool calibratingAStick, float notchAngles[], int notchStatus[]){
+void adjustNotch(int currentStep, float loopDelta, bool CW, int CCW, bool calibratingAStick, float notchAngles[], int notchStatus[]){
 	float X = 0;
 	float Y = 0;
 	//don't run on center steps
