@@ -84,6 +84,10 @@ struct FilterGains {
     //  the thresholds.
     float velThresh;//1 default for 1.2ms timesteps, larger for bigger timesteps
     float accelThresh;//5 default for 1.2ms timesteps, larger for bigger timesteps
+    //This just applies a low-pass filter. Larger = more smoothing and delay.
+    //It was added for single-motion ledgedashes.
+    float xSmoothing;//0.5 gives a roughly 1 ms delay
+    float ySmoothing;
 };
 FilterGains _gains {//these values are actually timestep-compensated for in runKalman
     .maxStick = 100,
@@ -94,7 +98,9 @@ FilterGains _gains {//these values are actually timestep-compensated for in runK
     .xVelDamp = 0.125,
     .yVelDamp = 0.125,
     .velThresh = 1.0,
-    .accelThresh = 3.0
+    .accelThresh = 3.0,
+    .xSmoothing = 0.0,
+    .ySmoothing = 0.0
 };
 
 //////values used to determine how much large of a region will count as being "in a notch"
@@ -1520,6 +1526,8 @@ void runKalman(const float xZ,const float yZ){
     g.accelThresh   = 1/(_gains.accelThresh * timeFactor);
     g.velThresh     = g.velThresh*g.velThresh;//square it because it's used squared
     g.accelThresh   = g.accelThresh*g.accelThresh;
+    g.xSmoothing    = pow(1-_gains.xSmoothing, timeDivisor);
+    g.ySmoothing    = pow(1-_gains.ySmoothing, timeDivisor);
 
     //save previous values of state
     //float _xPos;//input of kalman filter
@@ -1556,16 +1564,18 @@ void runKalman(const float xZ,const float yZ){
     const float stickDistance6 = stickDistance2*stickDistance2*stickDistance2;
 
     //the current velocity weight for the filtered velocity is the stick r^2
-    const float velWeight1 = stickDistance2;
-    const float velWeight2 = 1-velWeight1;
+    const float xVelWeight1 = g.xSmoothing*stickDistance2;
+    const float xVelWeight2 = 1-xVelWeight1;
+    const float yVelWeight1 = g.ySmoothing*stickDistance2;
+    const float yVelWeight2 = 1-yVelWeight1;
 
     //modified velocity to feed into our kalman filter.
     //We don't actually want an accurate model of the velocity, we want to suppress snapback without adding delay
     //term 1: weight current velocity according to r^2
     //term 2: the previous filtered velocity, weighted the opposite and also set to decay
     //term 3: a corrective factor based on the disagreement between real and filtered position
-    _xVelFilt = velWeight1*_xVel + (1-g.xVelDecay)*velWeight2*oldXVelFilt + g.xVelPosFactor*oldXPosDiff;
-    _yVelFilt = velWeight1*_yVel + (1-g.yVelDecay)*velWeight2*oldYVelFilt + g.yVelPosFactor*oldYPosDiff;
+    _xVelFilt = xVelWeight1*_xVel + (1-g.xVelDecay)*xVelWeight2*oldXVelFilt + g.xVelPosFactor*oldXPosDiff;
+    _yVelFilt = yVelWeight1*_yVel + (1-g.yVelDecay)*yVelWeight2*oldYVelFilt + g.yVelPosFactor*oldYPosDiff;
 
     //the current position weight used for the filtered position is whatever is larger of
     //  a) 1 minus the sum of the squares of
@@ -1578,10 +1588,10 @@ void runKalman(const float xZ,const float yZ){
     //When the stick is near the rim, we also want instant response, and we know snapback
     //  doesn't reach the rim.
     const float xPosWeightVelAcc = 1 - min(1, xVelSmooth*xVelSmooth*g.velThresh + xAccel*xAccel*g.accelThresh);
-    const float xPosWeight1 = max(xPosWeightVelAcc, stickDistance6);
+    const float xPosWeight1 = g.xSmoothing*max(xPosWeightVelAcc, stickDistance6);
     const float xPosWeight2 = 1-xPosWeight1;
     const float yPosWeightVelAcc = 1 - min(1, yVelSmooth*yVelSmooth*g.velThresh + yAccel*yAccel*g.accelThresh);
-    const float yPosWeight1 = max(yPosWeightVelAcc, stickDistance6);
+    const float yPosWeight1 = g.ySmoothing*max(yPosWeightVelAcc, stickDistance6);
     const float yPosWeight2 = 1-yPosWeight1;
 
     //In calculating the filtered stick position, we have the following components
