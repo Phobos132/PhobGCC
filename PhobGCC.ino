@@ -959,6 +959,7 @@ void readButtons(){
   * Increase/Decrease Snapback Fitering on X:  ZX+Du/Dd
   * Increase/Decrease Snapback Fitering on Y:  ZY+Du/Dd
   * Show Current Snapback Setting:  ZA+Dd
+  * Communicate With PhobConfigTool: LR+Start
   */
 
 	//check the dpad buttons to change the controller settings
@@ -1034,6 +1035,8 @@ void readButtons(){
       adjustSnapback(true, false, false);
     } else if(btn.A && hardwareZ && btn.Dd) { //Show Current Snapback Filtering
       adjustSnapback(false, false, false);
+    } else if(hardwareL && hardwareR && btn.S) { //Communicate With PhobConfigTool
+      communicatePCT();
     }
   } else if (_currentCalStep == -1) { //Safe Mode Disabled, Lock Settings
     if(btn.A && hardwareX && hardwareY && btn.S) { //Safe Mode Toggle
@@ -1132,6 +1135,23 @@ void freezeSticks() {
   hardwareX = (uint8_t) 0;
   hardwareY = (uint8_t) 0;
   hardwareZ = (uint8_t) 0;
+
+  int startTime = millis();
+  int delta = 0;
+  while(delta < 2000){
+    delta = millis() - startTime;
+  }
+}
+void communicatePCT() {
+
+  float xVarDisplay = 3 * (log(_gains.xVelDamp / 0.125) / log(2));
+  float yVarDisplay = 3 * (log(_gains.yVelDamp / 0.125) / log(2));
+
+  btn.Ax = (uint8_t) (127.5 + (_gains.xSmoothing * 10));
+  btn.Ay = (uint8_t) (127.5 + (_gains.ySmoothing * 10));
+
+  btn.Cx = (uint8_t) (xVarDisplay + 127.5);
+	btn.Cy = (uint8_t) (yVarDisplay + 127.5);
 
   int startTime = millis();
   int delta = 0;
@@ -1742,7 +1762,7 @@ void communicate(){
 #endif // TEENSY3_2
 /*******************
 	cleanCalPoints
-	take the x and y coordinates and notch angles collected during the calibration procedure, 
+	take the x and y coordinates and notch angles collected during the calibration procedure,
 	and generate the cleaned (non-redundant) x and y stick coordinates and the corresponding x and y notch coordinates
 *******************/
 void cleanCalPoints(float calPointsX[], float  calPointsY[], float notchAngles[], float cleanedPointsX[], float cleanedPointsY[], float notchPointsX[], float notchPointsY[]){
