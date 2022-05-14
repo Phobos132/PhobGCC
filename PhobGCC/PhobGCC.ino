@@ -51,6 +51,46 @@ float _velDampMax = .5;
 float _smoothingMin = 0.0;
 float _smoothingMax = 0.9;
 
+//Profile Control Definitions
+#define ANALOG_X_SNAPBACK 1
+#define ANALOG_Y_SNAPBACK 2
+#define ANALOG_X_SMOOTHING 3
+#define ANALOG_Y_SMOOTHING 4
+#define CSTICK_X_SMOOTHING 5
+#define CSTICK_Y_SMOOTHING 6
+#define CSTICK_X_OFFSET 7
+#define CSTICK_Y_OFFSET 8
+#define Z_JUMP 9
+#define L_TOGGLE 10
+#define R_TOGGLE 11
+#define L_OFFSET 12
+#define R_OFFSET 13
+
+union ProfileConfigs {
+	uint8_t arr[16];
+	struct {
+		//Bytes 0-3
+		uint8_t empty : 1;
+		uint8_t RToggle : 3;
+		uint8_t LToggle : 3;
+		uint8_t JumpConfig : 3;
+		uint8_t CYSmoothing : 4;
+		uint8_t CXSmoothing : 4;
+		uint8_t AYSmoothing: 4;
+		uint8_t AXSmoothing: 4;
+		uint8_t AYSnapback: 3;
+		uint8_t AXSnapbac: 3;
+
+		//Bytes 4-7
+		uint8_t ROffset : 8;
+		uint8_t LOffset : 8;
+		uint8_t CYOffset : 8;
+		uint8_t CXOffset : 8;
+
+
+	};
+}pcfg;
+
 //New snapback Kalman filter parameters.
 struct FilterGains {
 	//What's the max stick distance from the center
@@ -998,7 +1038,7 @@ void readButtons(){
 	/* Current Commands List
 	* Safe Mode:  AXY+Start
 	* Hard Reset:  ABZ+Start
-	* Rumble Toggle: 
+	* Rumble Toggle:
 	*
 	* Calibration
 	* Analog Stick Calibration:  AXY+L
