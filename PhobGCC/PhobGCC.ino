@@ -79,7 +79,7 @@ union ProfileConfigs {
 		uint8_t AYSmoothing: 4;
 		uint8_t AXSmoothing: 4;
 		uint8_t AYSnapback: 3;
-		uint8_t AXSnapbac: 3;
+		uint8_t AXSnapback: 3;
 
 		//Bytes 4-7
 		uint8_t ROffset : 8;
@@ -90,6 +90,20 @@ union ProfileConfigs {
 
 	};
 }pcfg;
+
+uint32_t maskRToggle = 0b0000'0000'0000'0000'0000'0000'0000'1110;
+uint32_t maskLToggle = 0b0000'0000'0000'0000'0000'0000'0111'0000;
+uint32_t maskJumpConfig = 0b0000'0000'0000'0000'0000'0011'1000'0000;
+uint32_t maskCYSmoothing = 0b0000'0000'0000'0000'0011'1100'0000'0000;
+uint32_t maskCXSmoothing = 0b0000'0000'0000'0011'1100'0000'0000'0000;
+uint32_t maskAYSmoothing = 0b0000'0000'0011'1100'0000'0000'0000'0000;
+uint32_t maskAXSmoothing = 0b0000'0011'1100'0000'0000'0000'0000'0000;
+uint32_t maskAYSnapback = 0b0001'1100'0000'0000'0000'0000'0000'0000;
+uint32_t maskAXSnapback = 0b1110'0000'0000'0000'0000'0000'0000'0000;
+uint32_t maskROffset = 0b0000'0000'0000'0000'0000'0000'1111'1111;
+uint32_t maskLOffset = 0b0000'0000'0000'0000'1111'1111'0000'0000;
+uint32_t maskCYOffset = 0b0000'0000'1111'1111'0000'0000'0000'0000;
+uint32_t maskCXOffset = 0b1111'1111'0000'0000'0000'0000'0000'0000;
 
 //New snapback Kalman filter parameters.
 struct FilterGains {
